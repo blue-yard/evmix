@@ -17,6 +17,14 @@ import {
   buildJumpDestinations,
 } from '../opcodes/controlflow'
 import { executePOP, executeDUP, executeSWAP } from '../opcodes/stack'
+import { executeMLOAD, executeMSTORE, executeMSTORE8, executeMSIZE } from '../opcodes/memory'
+import {
+  executeCALLDATALOAD,
+  executeCALLDATASIZE,
+  executeCALLDATACOPY,
+  executeRETURN,
+  executeREVERT,
+} from '../opcodes/data'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -33,6 +41,7 @@ export interface InterpreterConfig {
 
 export class Interpreter {
   private bytecode: Uint8Array
+  private calldata: Uint8Array
   private state: MachineState
   private stack: Stack
   private trace: TraceCollector
@@ -40,11 +49,7 @@ export class Interpreter {
 
   constructor(config: InterpreterConfig) {
     this.bytecode = config.bytecode
-    // calldata will be used in future phases (Phase 3)
-    // For now, just accept it in config but don't store it
-    if (config.calldata) {
-      // TODO: Phase 3 - store and use calldata
-    }
+    this.calldata = config.calldata || new Uint8Array(0)
     this.state = new MachineState(config.initialGas)
     this.stack = new Stack()
     this.trace = new TraceCollector()
@@ -176,6 +181,45 @@ export class Interpreter {
       // Stack operations
       case Opcode.POP:
         executePOP(this.state, this.stack, this.trace)
+        break
+
+      // Phase 3: Memory operations
+      case Opcode.MLOAD:
+        executeMLOAD(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.MSTORE:
+        executeMSTORE(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.MSTORE8:
+        executeMSTORE8(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.MSIZE:
+        executeMSIZE(this.state, this.stack, this.trace)
+        break
+
+      // Phase 3: Calldata operations
+      case Opcode.CALLDATALOAD:
+        executeCALLDATALOAD(this.state, this.stack, this.trace, this.calldata)
+        break
+
+      case Opcode.CALLDATASIZE:
+        executeCALLDATASIZE(this.state, this.stack, this.trace, this.calldata)
+        break
+
+      case Opcode.CALLDATACOPY:
+        executeCALLDATACOPY(this.state, this.stack, this.trace, this.calldata)
+        break
+
+      // Phase 3: Return operations
+      case Opcode.RETURN:
+        executeRETURN(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.REVERT:
+        executeREVERT(this.state, this.stack, this.trace)
         break
 
       // Phase 2: Control flow operations
