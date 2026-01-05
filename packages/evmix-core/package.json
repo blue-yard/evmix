@@ -1,0 +1,41 @@
+{
+  "name": "@evmix/core",
+  "version": "0.1.0",
+  "description": "EVMIX Core - EVM interpreter with tracing and replay",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "example": "tsx ../../docs/examples/basic-arithmetic.ts"
+  },
+  "keywords": [
+    "evm",
+    "interpreter",
+    "ethereum"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@vitest/coverage-v8": "^1.2.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.1"
+  }
+}

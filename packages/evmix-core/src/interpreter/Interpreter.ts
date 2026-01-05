@@ -1,0 +1,236 @@
+import { MachineState } from '../state/MachineState'
+import { HaltReason } from '../state/HaltReason'
+import { Stack, StackError } from '../state/Stack'
+import { TraceCollector } from '../trace/TraceCollector'
+import { TraceEventBuilder } from '../trace/TraceEvent'
+import { Word256 } from '../types/Word256'
+import { getOpcodeName, isPushOpcode, getPushBytes, Opcode } from '../opcodes/Opcode'
+
+// Import opcode implementations
+import { executeAdd, executeMul, executeSub, executeDiv } from '../opcodes/arithmetic'
+import { executeStop } from '../opcodes/system'
+
+/**
+ * Interpreter - The core EVM interpreter
+ *
+ * Executes bytecode one instruction at a time, maintaining machine state
+ * and emitting trace events for observability.
+ */
+
+export interface InterpreterConfig {
+  bytecode: Uint8Array
+  initialGas: bigint
+  calldata?: Uint8Array
+}
+
+export class Interpreter {
+  private bytecode: Uint8Array
+  private state: MachineState
+  private stack: Stack
+  private trace: TraceCollector
+
+  constructor(config: InterpreterConfig) {
+    this.bytecode = config.bytecode
+    // calldata will be used in future phases (Phase 3)
+    // For now, just accept it in config but don't store it
+    if (config.calldata) {
+      // TODO: Phase 3 - store and use calldata
+    }
+    this.state = new MachineState(config.initialGas)
+    this.stack = new Stack()
+    this.trace = new TraceCollector()
+  }
+
+  /**
+   * Execute a single instruction
+   * Returns true if execution should continue, false if halted
+   */
+  step(): boolean {
+    if (this.state.halted) {
+      return false
+    }
+
+    // Check if PC is within bytecode bounds
+    if (this.state.pc >= this.bytecode.length) {
+      this.state.halt(HaltReason.STOP)
+      const event = TraceEventBuilder.halt(
+        this.trace.getNextIndex(),
+        this.state.pc,
+        this.state.gasRemaining,
+        HaltReason.STOP
+      )
+      this.trace.record(event)
+      return false
+    }
+
+    // Fetch opcode
+    const opcode = this.bytecode[this.state.pc]
+    const opcodeName = getOpcodeName(opcode)
+
+    // Emit opcode start event
+    const startEvent = TraceEventBuilder.opcodeStart(
+      this.trace.getNextIndex(),
+      this.state.pc,
+      this.state.gasRemaining,
+      opcode,
+      opcodeName
+    )
+    this.trace.record(startEvent)
+
+    try {
+      // Dispatch to opcode handler
+      this.executeOpcode(opcode)
+    } catch (error) {
+      if (error instanceof StackError) {
+        const reason = error.message.includes('overflow')
+          ? HaltReason.STACK_OVERFLOW
+          : HaltReason.STACK_UNDERFLOW
+        this.state.halt(reason)
+      } else if (error instanceof Error && error.message === 'Out of gas') {
+        // Already halted in chargeGas
+      } else {
+        throw error
+      }
+    }
+
+    // Emit halt event if halted
+    if (this.state.halted && this.state.haltReason) {
+      const haltEvent = TraceEventBuilder.halt(
+        this.trace.getNextIndex(),
+        this.state.pc,
+        this.state.gasRemaining,
+        this.state.haltReason
+      )
+      this.trace.record(haltEvent)
+      return false
+    }
+
+    return !this.state.halted
+  }
+
+  /**
+   * Run execution until halt
+   */
+  run(): void {
+    while (this.step()) {
+      // Continue until halted
+    }
+  }
+
+  /**
+   * Execute a specific opcode
+   */
+  private executeOpcode(opcode: number): void {
+    // Handle PUSH operations
+    if (isPushOpcode(opcode)) {
+      this.executePush(opcode)
+      return
+    }
+
+    // Dispatch to specific opcode handlers
+    switch (opcode) {
+      case Opcode.STOP:
+        executeStop(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.ADD:
+        executeAdd(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.MUL:
+        executeMul(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SUB:
+        executeSub(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.DIV:
+        executeDiv(this.state, this.stack, this.trace)
+        break
+
+      default:
+        this.state.halt(HaltReason.INVALID_OPCODE)
+        return
+    }
+  }
+
+  /**
+   * Execute PUSH operation
+   */
+  private executePush(opcode: number): void {
+    const numBytes = getPushBytes(opcode)
+
+    // Charge gas (3 for PUSH)
+    this.state.chargeGas(3n)
+    const gasEvent = TraceEventBuilder.gasCharge(
+      this.trace.getNextIndex(),
+      this.state.pc,
+      this.state.gasRemaining,
+      3n,
+      `PUSH${numBytes}`
+    )
+    this.trace.record(gasEvent)
+
+    // Read bytes to push
+    let value = 0n
+    for (let i = 1; i <= numBytes; i++) {
+      if (this.state.pc + i < this.bytecode.length) {
+        value = (value << 8n) | BigInt(this.bytecode[this.state.pc + i])
+      } else {
+        value = value << 8n
+      }
+    }
+
+    // Push to stack
+    const word = Word256.from(value)
+    this.stack.push(word)
+
+    // Emit stack push event
+    const pushEvent = TraceEventBuilder.stackPush(
+      this.trace.getNextIndex(),
+      this.state.pc,
+      this.state.gasRemaining,
+      word
+    )
+    this.trace.record(pushEvent)
+
+    // Advance PC (opcode + data bytes)
+    this.state.pc += 1 + numBytes
+  }
+
+  /**
+   * Get current machine state
+   */
+  getState(): MachineState {
+    return this.state
+  }
+
+  /**
+   * Get current stack
+   */
+  getStack(): Stack {
+    return this.stack
+  }
+
+  /**
+   * Get trace collector
+   */
+  getTrace(): TraceCollector {
+    return this.trace
+  }
+
+  /**
+   * Check if execution has halted
+   */
+  isHalted(): boolean {
+    return this.state.halted
+  }
+
+  /**
+   * Get halt reason (if halted)
+   */
+  getHaltReason(): HaltReason | undefined {
+    return this.state.haltReason
+  }
+}

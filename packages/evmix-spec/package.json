@@ -1,0 +1,13 @@
+{
+  "name": "@evmix/spec",
+  "version": "0.1.0",
+  "description": "EVMIX Spec - Opcode documentation and learning materials",
+  "type": "module",
+  "keywords": [
+    "evm",
+    "documentation",
+    "ethereum"
+  ],
+  "author": "",
+  "license": "MIT"
+}

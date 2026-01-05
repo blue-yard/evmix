@@ -1,0 +1,37 @@
+{
+  "name": "evmix-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EVMIX - An Observable, Educational Ethereum Virtual Machine",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter \"./packages/*\" run dev --parallel",
+    "build": "pnpm --filter \"./packages/*\" run build",
+    "test": "pnpm --filter \"./packages/*\" run test",
+    "test:coverage": "pnpm --filter \"./packages/*\" run test:coverage",
+    "lint": "pnpm --filter \"./packages/*\" run lint",
+    "format": "prettier --write \"packages/**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,tsx,js,json,md}\"",
+    "typecheck": "pnpm --filter \"./packages/*\" run typecheck",
+    "clean": "pnpm --filter \"./packages/*\" run clean && rm -rf node_modules"
+  },
+  "keywords": [
+    "ethereum",
+    "evm",
+    "virtual-machine",
+    "educational",
+    "debugger",
+    "interpreter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.1"
+  }
+}
