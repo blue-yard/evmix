@@ -9,6 +9,14 @@ import { getOpcodeName, isPushOpcode, getPushBytes, Opcode } from '../opcodes/Op
 // Import opcode implementations
 import { executeAdd, executeMul, executeSub, executeDiv } from '../opcodes/arithmetic'
 import { executeStop } from '../opcodes/system'
+import {
+  executePC,
+  executeJUMP,
+  executeJUMPI,
+  executeJUMPDEST,
+  buildJumpDestinations,
+} from '../opcodes/controlflow'
+import { executePOP, executeDUP, executeSWAP } from '../opcodes/stack'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -28,6 +36,7 @@ export class Interpreter {
   private state: MachineState
   private stack: Stack
   private trace: TraceCollector
+  private validJumpDests: Set<number>
 
   constructor(config: InterpreterConfig) {
     this.bytecode = config.bytecode
@@ -39,6 +48,9 @@ export class Interpreter {
     this.state = new MachineState(config.initialGas)
     this.stack = new Stack()
     this.trace = new TraceCollector()
+
+    // Phase 2: Build valid jump destinations
+    this.validJumpDests = buildJumpDestinations(this.bytecode)
   }
 
   /**
@@ -127,6 +139,18 @@ export class Interpreter {
       return
     }
 
+    // Handle DUP operations
+    if (opcode >= 0x80 && opcode <= 0x8f) {
+      executeDUP(opcode, this.state, this.stack, this.trace)
+      return
+    }
+
+    // Handle SWAP operations
+    if (opcode >= 0x90 && opcode <= 0x9f) {
+      executeSWAP(opcode, this.state, this.stack, this.trace)
+      return
+    }
+
     // Dispatch to specific opcode handlers
     switch (opcode) {
       case Opcode.STOP:
@@ -147,6 +171,28 @@ export class Interpreter {
 
       case Opcode.DIV:
         executeDiv(this.state, this.stack, this.trace)
+        break
+
+      // Stack operations
+      case Opcode.POP:
+        executePOP(this.state, this.stack, this.trace)
+        break
+
+      // Phase 2: Control flow operations
+      case Opcode.PC:
+        executePC(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.JUMP:
+        executeJUMP(this.state, this.stack, this.trace, this.bytecode, this.validJumpDests)
+        break
+
+      case Opcode.JUMPI:
+        executeJUMPI(this.state, this.stack, this.trace, this.bytecode, this.validJumpDests)
+        break
+
+      case Opcode.JUMPDEST:
+        executeJUMPDEST(this.state, this.stack, this.trace)
         break
 
       default:
