@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Interpreter } from '../../src/interpreter/Interpreter'
 import { HaltReason } from '../../src/state/HaltReason'
+import { MemoryHost } from '../../src/host/MemoryHost'
 
 describe('Phase 2 Integration Tests - Control Flow', () => {
   it('PC opcode pushes current program counter', () => {
@@ -15,7 +16,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -36,7 +38,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -63,7 +66,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP (at 11)
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -103,7 +107,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP (at 11)
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -135,7 +140,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -167,7 +173,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -184,7 +191,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -211,7 +219,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -250,7 +259,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP (at 11)
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -291,7 +301,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP (at 15)
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -312,7 +323,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP (at 5)
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     const trace = interpreter.getTrace()
@@ -368,7 +380,8 @@ describe('Phase 2 Integration Tests - Control Flow', () => {
       0x00, // STOP (at 11)
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)

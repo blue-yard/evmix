@@ -23,6 +23,7 @@ export type TraceEvent =
   | GasChargeEvent
   | JumpEvent
   | HaltEvent
+  | LogEvent
 
 /**
  * Base event properties
@@ -123,6 +124,16 @@ export interface JumpEvent extends BaseEvent {
 export interface HaltEvent extends BaseEvent {
   type: 'halt'
   reason: HaltReason
+}
+
+/**
+ * Log entry emitted
+ */
+export interface LogEvent extends BaseEvent {
+  type: 'log'
+  address: string // hex representation
+  topics: string[] // hex representations
+  data: string // hex representation
 }
 
 /**
@@ -283,6 +294,25 @@ export class TraceEventBuilder {
       pc,
       gasRemaining: gas,
       reason,
+    }
+  }
+
+  static log(
+    index: number,
+    pc: number,
+    gas: bigint,
+    address: Address,
+    topics: Word256[],
+    data: Uint8Array
+  ): LogEvent {
+    return {
+      type: 'log',
+      index,
+      pc,
+      gasRemaining: gas,
+      address: address.toHexWith0x(),
+      topics: topics.map((t) => t.toHexWith0x()),
+      data: '0x' + Array.from(data, (b) => b.toString(16).padStart(2, '0')).join(''),
     }
   }
 }

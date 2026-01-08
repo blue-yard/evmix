@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Interpreter } from '../../src/interpreter/Interpreter'
 import { HaltReason } from '../../src/state/HaltReason'
+import { MemoryHost } from '../../src/host/MemoryHost'
 
 describe('Phase 1 Integration Tests', () => {
   it('executes a simple arithmetic program', () => {
@@ -21,7 +22,8 @@ describe('Phase 1 Integration Tests', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -41,7 +43,8 @@ describe('Phase 1 Integration Tests', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.getStack().depth()).toBe(1)
@@ -58,7 +61,8 @@ describe('Phase 1 Integration Tests', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     const trace = interpreter.getTrace()
@@ -99,7 +103,8 @@ describe('Phase 1 Integration Tests', () => {
     ])
 
     const initialGas = 1000n
-    const interpreter = new Interpreter({ bytecode, initialGas })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas, host })
     interpreter.run()
 
     // Total gas: 3 + 3 + 5 + 3 + 3 = 17
@@ -126,7 +131,8 @@ describe('Phase 1 Integration Tests', () => {
       0x01, // ADD (needs 2 values, only has 1)
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.isHalted()).toBe(true)
@@ -164,7 +170,8 @@ describe('Phase 1 Integration Tests', () => {
       0x00, // STOP
     ])
 
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
     interpreter.run()
 
     expect(interpreter.getStack().depth()).toBe(1)

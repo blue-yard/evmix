@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { Interpreter } from '../../src/interpreter/Interpreter'
 import { HaltReason } from '../../src/state/HaltReason'
+import { MemoryHost } from '../../src/host/MemoryHost'
 
 describe('Interpreter', () => {
   it('initializes correctly', () => {
     const bytecode = new Uint8Array([0x00]) // STOP
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     expect(interpreter.isHalted()).toBe(false)
     expect(interpreter.getState().pc).toBe(0)
@@ -14,7 +16,8 @@ describe('Interpreter', () => {
 
   it('executes STOP opcode', () => {
     const bytecode = new Uint8Array([0x00]) // STOP
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     const continued = interpreter.step()
     expect(continued).toBe(false)
@@ -29,7 +32,8 @@ describe('Interpreter', () => {
       0x60,
       0x03, // PUSH1 3
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step() // PUSH1 5
     expect(interpreter.getStack().depth()).toBe(1)
@@ -48,7 +52,8 @@ describe('Interpreter', () => {
       0x03, // PUSH1 3
       0x01, // ADD
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step() // PUSH1 5
     interpreter.step() // PUSH1 3
@@ -66,7 +71,8 @@ describe('Interpreter', () => {
       0x07, // PUSH1 7
       0x02, // MUL
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step() // PUSH1 6
     interpreter.step() // PUSH1 7
@@ -84,7 +90,8 @@ describe('Interpreter', () => {
       0x03, // PUSH1 3
       0x03, // SUB
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step() // PUSH1 10
     interpreter.step() // PUSH1 3
@@ -102,7 +109,8 @@ describe('Interpreter', () => {
       0x02, // PUSH1 2
       0x04, // DIV
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step() // PUSH1 84
     interpreter.step() // PUSH1 2
@@ -120,7 +128,8 @@ describe('Interpreter', () => {
       0x00, // PUSH1 0
       0x04, // DIV
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step() // PUSH1 10
     interpreter.step() // PUSH1 0
@@ -139,7 +148,8 @@ describe('Interpreter', () => {
       0x01, // ADD
       0x00, // STOP
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.run()
 
@@ -158,7 +168,8 @@ describe('Interpreter', () => {
       0x01, // ADD
       0x00, // STOP
     ])
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.run()
 
@@ -216,7 +227,8 @@ describe('Interpreter', () => {
 
   it('halts on invalid opcode', () => {
     const bytecode = new Uint8Array([0xff]) // Not implemented
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step()
 
@@ -226,7 +238,8 @@ describe('Interpreter', () => {
 
   it('halts when PC exceeds bytecode length', () => {
     const bytecode = new Uint8Array([0x60, 0x05]) // PUSH1 5
-    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+    const host = new MemoryHost()
+    const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 
     interpreter.step() // PUSH1 5 advances PC to 2
     const continued = interpreter.step() // PC=2, beyond bytecode

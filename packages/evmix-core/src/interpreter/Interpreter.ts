@@ -5,6 +5,7 @@ import { TraceCollector } from '../trace/TraceCollector'
 import { TraceEventBuilder } from '../trace/TraceEvent'
 import { Word256 } from '../types/Word256'
 import { getOpcodeName, isPushOpcode, getPushBytes, Opcode } from '../opcodes/Opcode'
+import { Host } from '../host/Host'
 
 // Import opcode implementations
 import { executeAdd, executeMul, executeSub, executeDiv } from '../opcodes/arithmetic'
@@ -25,6 +26,8 @@ import {
   executeRETURN,
   executeREVERT,
 } from '../opcodes/data'
+import { executeSLOAD, executeSSTORE } from '../opcodes/storage'
+import { executeLOG0, executeLOG1, executeLOG2, executeLOG3, executeLOG4 } from '../opcodes/logging'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -37,6 +40,7 @@ export interface InterpreterConfig {
   bytecode: Uint8Array
   initialGas: bigint
   calldata?: Uint8Array
+  host: Host
 }
 
 export class Interpreter {
@@ -46,6 +50,7 @@ export class Interpreter {
   private stack: Stack
   private trace: TraceCollector
   private validJumpDests: Set<number>
+  private host: Host
 
   constructor(config: InterpreterConfig) {
     this.bytecode = config.bytecode
@@ -53,6 +58,7 @@ export class Interpreter {
     this.state = new MachineState(config.initialGas)
     this.stack = new Stack()
     this.trace = new TraceCollector()
+    this.host = config.host
 
     // Phase 2: Build valid jump destinations
     this.validJumpDests = buildJumpDestinations(this.bytecode)
@@ -237,6 +243,36 @@ export class Interpreter {
 
       case Opcode.JUMPDEST:
         executeJUMPDEST(this.state, this.stack, this.trace)
+        break
+
+      // Phase 4: Storage operations
+      case Opcode.SLOAD:
+        executeSLOAD(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.SSTORE:
+        executeSSTORE(this.state, this.stack, this.trace, this.host)
+        break
+
+      // Phase 4: Logging operations
+      case Opcode.LOG0:
+        executeLOG0(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.LOG1:
+        executeLOG1(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.LOG2:
+        executeLOG2(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.LOG3:
+        executeLOG3(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.LOG4:
+        executeLOG4(this.state, this.stack, this.trace, this.host)
         break
 
       default:

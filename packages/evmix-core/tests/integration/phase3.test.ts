@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Interpreter } from '../../src/interpreter/Interpreter'
 import { HaltReason } from '../../src/state/HaltReason'
+import { MemoryHost } from '../../src/host/MemoryHost'
 
 describe('Phase 3 Integration Tests - Memory & Data', () => {
   describe('Memory Operations', () => {
@@ -20,7 +21,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0x00, // STOP
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.isHalted()).toBe(true)
@@ -45,7 +47,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0x00, // STOP
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       // Should get 0xFF followed by 31 zero bytes
@@ -69,7 +72,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0x00, // STOP
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.getStack().depth()).toBe(2)
@@ -122,7 +126,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0x00, // STOP
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.getStack().peek().value).toBe(123n)
@@ -138,7 +143,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
 
       const calldata = new Uint8Array([1, 2, 3, 4, 5])
 
-      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.getStack().peek().value).toBe(5n)
@@ -156,7 +162,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
       // Calldata: first 4 bytes are 0x01020304, rest zeros
       const calldata = new Uint8Array([0x01, 0x02, 0x03, 0x04])
 
-      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n, host })
       interpreter.run()
 
       // Should get 0x01020304 followed by 28 zero bytes
@@ -174,7 +181,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
 
       const calldata = new Uint8Array([0xff, 0xff])
 
-      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n, host })
       interpreter.run()
 
       // All zeros (reading beyond calldata)
@@ -202,7 +210,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
 
       const calldata = new Uint8Array([0xde, 0xad, 0xbe, 0xef])
 
-      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n, host })
       interpreter.run()
 
       // Should get 0xdeadbeef followed by 28 zero bytes
@@ -230,7 +239,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
 
       const calldata = new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd])
 
-      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n, host })
       interpreter.run()
 
       // Should get 0xaabbccdd followed by 28 zero bytes (4 from calldata + 4 padding zeros + 24 more)
@@ -256,7 +266,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0xf3, // RETURN
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.isHalted()).toBe(true)
@@ -291,7 +302,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0xfd, // REVERT
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.isHalted()).toBe(true)
@@ -318,7 +330,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0xf3, // RETURN
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.getHaltReason()).toBe(HaltReason.RETURN)
@@ -353,7 +366,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
 
       const calldata = new Uint8Array([0x00, 0x11, 0x22, 0x33])
 
-      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.getHaltReason()).toBe(HaltReason.RETURN)
@@ -407,7 +421,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0xf3, // RETURN
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       const returnData = interpreter.getState().returnData
@@ -451,14 +466,16 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
 
       // Test with zero calldata - should revert
       const calldata1 = new Uint8Array(32) // All zeros
-      const interpreter1 = new Interpreter({ bytecode, calldata: calldata1, initialGas: 1000000n })
+      const host1 = new MemoryHost()
+      const interpreter1 = new Interpreter({ bytecode, calldata: calldata1, initialGas: 1000000n, host: host1 })
       interpreter1.run()
       expect(interpreter1.getHaltReason()).toBe(HaltReason.REVERT)
 
       // Test with non-zero calldata - should return
       const calldata2 = new Uint8Array(32)
       calldata2[0] = 0x01
-      const interpreter2 = new Interpreter({ bytecode, calldata: calldata2, initialGas: 1000000n })
+      const host2 = new MemoryHost()
+      const interpreter2 = new Interpreter({ bytecode, calldata: calldata2, initialGas: 1000000n, host: host2 })
       interpreter2.run()
       expect(interpreter2.getHaltReason()).toBe(HaltReason.RETURN)
     })
@@ -474,7 +491,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0x00, // STOP
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.getStack().peek().value).toBe(0n)
@@ -504,7 +522,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
         0x00, // STOP
       ])
 
-      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
       // Should be 0xAA (second write overwrites first)
@@ -528,7 +547,8 @@ describe('Phase 3 Integration Tests - Memory & Data', () => {
 
       const calldata = new Uint8Array([0x01, 0x02, 0x03, 0x04])
 
-      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n })
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, calldata, initialGas: 1000000n, host })
       interpreter.run()
 
       expect(interpreter.getStack().depth()).toBe(2)
