@@ -149,7 +149,7 @@ describe('Phase 4 Integration Tests - World Interaction', () => {
       const address1 = Address.fromHex('0x1111111111111111111111111111111111111111')
       const address2 = Address.fromHex('0x2222222222222222222222222222222222222222')
 
-      const host = new MemoryHost(address1)
+      const host = new MemoryHost({ address: address1 })
       const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
       interpreter.run()
 
@@ -481,6 +481,225 @@ describe('Phase 4 Integration Tests - World Interaction', () => {
       // Memory should be expanded to at least 132 bytes (rounded up to 160)
       const memorySize = interpreter.getStack().peek().value
       expect(memorySize).toBeGreaterThanOrEqual(132n)
+    })
+  })
+
+  describe('Block Info Opcodes', () => {
+    it('COINBASE (0x41) - Should push miner address', () => {
+      // Program: COINBASE, STOP
+      const bytecode = new Uint8Array([
+        0x41, // COINBASE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({
+        coinbase: Address.fromHex('0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'),
+      })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      // Address is 20 bytes, so it should be the bottom 160 bits
+      expect(interpreter.getStack().peek().value).toBe(
+        0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefn
+      )
+    })
+
+    it('TIMESTAMP (0x42) - Should push block timestamp', () => {
+      // Program: TIMESTAMP, STOP
+      const bytecode = new Uint8Array([
+        0x42, // TIMESTAMP
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ timestamp: 12345n })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(12345n)
+    })
+
+    it('NUMBER (0x43) - Should push block number', () => {
+      // Program: NUMBER, STOP
+      const bytecode = new Uint8Array([
+        0x43, // NUMBER
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ number: 100n })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(100n)
+    })
+
+    it('DIFFICULTY (0x44) - Should push difficulty', () => {
+      // Program: DIFFICULTY, STOP
+      const bytecode = new Uint8Array([
+        0x44, // DIFFICULTY
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ difficulty: 1000000n })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(1000000n)
+    })
+
+    it('GASLIMIT (0x45) - Should push gas limit', () => {
+      // Program: GASLIMIT, STOP
+      const bytecode = new Uint8Array([
+        0x45, // GASLIMIT
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ gasLimit: 30000000n })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(30000000n)
+    })
+
+    it('CHAINID (0x46) - Should push chain ID', () => {
+      // Program: CHAINID, STOP
+      const bytecode = new Uint8Array([
+        0x46, // CHAINID
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ chainId: 1n })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(1n)
+    })
+
+    it('BASEFEE (0x48) - Should push base fee', () => {
+      // Program: BASEFEE, STOP
+      const bytecode = new Uint8Array([
+        0x48, // BASEFEE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ baseFee: 1000000000n })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(1000000000n)
+    })
+
+    it('BLOCKHASH (0x40) - Should push block hash for recent block', () => {
+      // Program: PUSH1 99, BLOCKHASH, STOP
+      const bytecode = new Uint8Array([
+        0x60,
+        0x63, // PUSH1 99
+        0x40, // BLOCKHASH
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ number: 100n })
+      host.setBlockHash(99n, Word256.from(0xabcdef1234567890n))
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(0xabcdef1234567890n)
+    })
+
+    it('BLOCKHASH (0x40) - Should return zero for current block number', () => {
+      // Program: PUSH1 100, BLOCKHASH, STOP (current block = 100)
+      const bytecode = new Uint8Array([
+        0x60,
+        0x64, // PUSH1 100
+        0x40, // BLOCKHASH
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ number: 100n })
+      host.setBlockHash(100n, Word256.from(0xdeadbeefn))
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      // Current block hash is not accessible
+      expect(interpreter.getStack().peek().value).toBe(0n)
+    })
+
+    it('BLOCKHASH (0x40) - Should return zero for block older than 256', () => {
+      // Program: PUSH1 0, BLOCKHASH, STOP (current block = 500, asking for block 0)
+      const bytecode = new Uint8Array([
+        0x60,
+        0x00, // PUSH1 0
+        0x40, // BLOCKHASH
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ number: 500n })
+      host.setBlockHash(0n, Word256.from(0x123456n))
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      // Block 0 is more than 256 blocks old when current block is 500
+      expect(interpreter.getStack().peek().value).toBe(0n)
+    })
+
+    it('BLOCKHASH (0x40) - Should return zero for future block', () => {
+      // Program: PUSH1 101, BLOCKHASH, STOP (current block = 100)
+      const bytecode = new Uint8Array([
+        0x60,
+        0x65, // PUSH1 101
+        0x40, // BLOCKHASH
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBlockContext({ number: 100n })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      // Future block hash is not accessible
+      expect(interpreter.getStack().peek().value).toBe(0n)
     })
   })
 
