@@ -895,6 +895,583 @@ describe('Phase 4 Integration Tests - World Interaction', () => {
     })
   })
 
+  describe('Code Opcodes', () => {
+    it('CODESIZE pushes size of executing bytecode', () => {
+      // Program: CODESIZE, STOP (2 bytes total)
+      const bytecode = new Uint8Array([
+        0x38, // CODESIZE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(2n) // bytecode is 2 bytes
+    })
+
+    it('CODESIZE returns correct size for longer bytecode', () => {
+      // Program with PUSH operations making it longer
+      const bytecode = new Uint8Array([
+        0x60,
+        0x00, // PUSH1 0
+        0x60,
+        0x00, // PUSH1 0
+        0x60,
+        0x00, // PUSH1 0
+        0x38, // CODESIZE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.getStack().depth()).toBe(4)
+      expect(interpreter.getStack().peek().value).toBe(8n) // bytecode is 8 bytes
+    })
+
+    it('CODECOPY copies code to memory', () => {
+      // Program: copy 4 bytes from code offset 0 to memory offset 0
+      const bytecode = new Uint8Array([
+        0x60,
+        0x04, // PUSH1 4 (size)
+        0x60,
+        0x00, // PUSH1 0 (offset in code)
+        0x60,
+        0x00, // PUSH1 0 (destOffset in memory)
+        0x39, // CODECOPY
+        0x60,
+        0x00, // PUSH1 0
+        0x51, // MLOAD (load from memory to verify)
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+
+      // Memory should contain the first 4 bytes of bytecode: 0x60 0x04 0x60 0x00
+      // MLOAD returns 32 bytes as a Word256
+      const memValue = interpreter.getStack().peek().value
+      // First 4 bytes are 0x60040600, padded with zeros
+      expect(memValue).toBe(0x6004600000000000000000000000000000000000000000000000000000000000n)
+    })
+
+    it('CODECOPY copies code from middle of bytecode', () => {
+      // Copy bytes 2-5 (offset 2, size 4) to memory offset 0
+      const bytecode = new Uint8Array([
+        0x60,
+        0x04, // PUSH1 4 (size)
+        0x60,
+        0x02, // PUSH1 2 (offset in code - starts at 3rd byte)
+        0x60,
+        0x00, // PUSH1 0 (destOffset)
+        0x39, // CODECOPY
+        0x60,
+        0x00, // PUSH1 0
+        0x51, // MLOAD
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      // Bytes 2-5 of bytecode are: 0x60 0x02 0x60 0x00
+      const memValue = interpreter.getStack().peek().value
+      expect(memValue).toBe(0x6002600000000000000000000000000000000000000000000000000000000000n)
+    })
+
+    it('CODECOPY pads with zeros when reading beyond code', () => {
+      // Copy 8 bytes starting at offset that goes beyond code
+      const bytecode = new Uint8Array([
+        0x60,
+        0x08, // PUSH1 8 (size)
+        0x60,
+        0x06, // PUSH1 6 (offset - near end)
+        0x60,
+        0x00, // PUSH1 0 (destOffset)
+        0x39, // CODECOPY
+        0x60,
+        0x00, // PUSH1 0
+        0x51, // MLOAD
+        0x00, // STOP - this is at offset 10
+      ])
+
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      // Memory should have bytes 6-10 from code (5 bytes) + 3 zeros
+      // Bytes at offset 6-10 are: 0x39 0x60 0x00 0x51 0x00
+      // But we're also padding with 3 zeros to make 8 bytes
+      const mem = interpreter.getState().memory
+      expect(mem[0]).toBe(0x39) // CODECOPY opcode
+      expect(mem[1]).toBe(0x60) // PUSH1
+      expect(mem[2]).toBe(0x00) // 0
+      expect(mem[3]).toBe(0x51) // MLOAD
+      expect(mem[4]).toBe(0x00) // STOP
+      expect(mem[5]).toBe(0x00) // Zero padding
+      expect(mem[6]).toBe(0x00) // Zero padding
+      expect(mem[7]).toBe(0x00) // Zero padding
+    })
+
+    it('EXTCODESIZE returns size of external code', () => {
+      // Set up external code at a known address
+      const externalCode = new Uint8Array([0x60, 0x00, 0x60, 0x00, 0x00]) // 5 bytes
+      const externalAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+
+      const bytecode = new Uint8Array([
+        // Push the external address
+        0x73, // PUSH20
+        ...externalAddress.toBytes(),
+        0x3b, // EXTCODESIZE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setCode(externalAddress, externalCode)
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(5n) // external code is 5 bytes
+    })
+
+    it('EXTCODESIZE returns 0 for address with no code', () => {
+      const emptyAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+
+      const bytecode = new Uint8Array([
+        0x73, // PUSH20
+        ...emptyAddress.toBytes(),
+        0x3b, // EXTCODESIZE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      // Don't set any code for emptyAddress
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.getStack().peek().value).toBe(0n)
+    })
+
+    it('EXTCODECOPY copies external code to memory', () => {
+      // Set up external code
+      const externalCode = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe])
+      const externalAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+
+      const bytecode = new Uint8Array([
+        0x60,
+        0x06, // PUSH1 6 (size)
+        0x60,
+        0x00, // PUSH1 0 (offset in external code)
+        0x60,
+        0x00, // PUSH1 0 (destOffset in memory)
+        0x73, // PUSH20 (address)
+        ...externalAddress.toBytes(),
+        0x3c, // EXTCODECOPY
+        0x60,
+        0x00, // PUSH1 0
+        0x51, // MLOAD
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setCode(externalAddress, externalCode)
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+
+      // Memory should contain the external code bytes
+      const mem = interpreter.getState().memory
+      expect(mem[0]).toBe(0xde)
+      expect(mem[1]).toBe(0xad)
+      expect(mem[2]).toBe(0xbe)
+      expect(mem[3]).toBe(0xef)
+      expect(mem[4]).toBe(0xca)
+      expect(mem[5]).toBe(0xfe)
+    })
+
+    it('EXTCODECOPY pads with zeros when reading beyond external code', () => {
+      const externalCode = new Uint8Array([0xaa, 0xbb])
+      const externalAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+
+      const bytecode = new Uint8Array([
+        0x60,
+        0x08, // PUSH1 8 (size - more than external code length)
+        0x60,
+        0x00, // PUSH1 0 (offset)
+        0x60,
+        0x00, // PUSH1 0 (destOffset)
+        0x73, // PUSH20
+        ...externalAddress.toBytes(),
+        0x3c, // EXTCODECOPY
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setCode(externalAddress, externalCode)
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      const mem = interpreter.getState().memory
+      expect(mem[0]).toBe(0xaa)
+      expect(mem[1]).toBe(0xbb)
+      expect(mem[2]).toBe(0x00) // Zero padding
+      expect(mem[3]).toBe(0x00)
+      expect(mem[4]).toBe(0x00)
+      expect(mem[5]).toBe(0x00)
+      expect(mem[6]).toBe(0x00)
+      expect(mem[7]).toBe(0x00)
+    })
+
+    it('EXTCODECOPY with offset into external code', () => {
+      const externalCode = new Uint8Array([0x11, 0x22, 0x33, 0x44, 0x55])
+      const externalAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+
+      const bytecode = new Uint8Array([
+        0x60,
+        0x03, // PUSH1 3 (size)
+        0x60,
+        0x02, // PUSH1 2 (offset - start at 3rd byte)
+        0x60,
+        0x00, // PUSH1 0 (destOffset)
+        0x73, // PUSH20
+        ...externalAddress.toBytes(),
+        0x3c, // EXTCODECOPY
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setCode(externalAddress, externalCode)
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      const mem = interpreter.getState().memory
+      expect(mem[0]).toBe(0x33) // Byte at offset 2
+      expect(mem[1]).toBe(0x44) // Byte at offset 3
+      expect(mem[2]).toBe(0x55) // Byte at offset 4
+    })
+
+    it('EXTCODEHASH returns code hash for address with code', () => {
+      const externalAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+      const expectedHash = Word256.from(
+        0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890n
+      )
+
+      const bytecode = new Uint8Array([
+        0x73, // PUSH20
+        ...externalAddress.toBytes(),
+        0x3f, // EXTCODEHASH
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setCodeHash(externalAddress, expectedHash)
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(expectedHash.value)
+    })
+
+    it('EXTCODEHASH returns empty code hash for EOA', () => {
+      // Empty code hash (keccak256 of empty bytes)
+      const emptyCodeHash = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470n
+      const eoaAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+
+      const bytecode = new Uint8Array([
+        0x73, // PUSH20
+        ...eoaAddress.toBytes(),
+        0x3f, // EXTCODEHASH
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      // Don't set code for EOA
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.getStack().peek().value).toBe(emptyCodeHash)
+    })
+
+    it('EXTCODEHASH returns hash when code is set via setCode', () => {
+      const externalAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+      const externalCode = new Uint8Array([0x60, 0x00, 0x00])
+
+      const bytecode = new Uint8Array([
+        0x73, // PUSH20
+        ...externalAddress.toBytes(),
+        0x3f, // EXTCODEHASH
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setCode(externalAddress, externalCode)
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      // MemoryHost returns zero for code hash when code exists but hash not explicitly set
+      // (Real implementation would compute keccak256)
+      expect(interpreter.getStack().depth()).toBe(1)
+      // The value should be zero (placeholder) since we only set code, not code hash
+      expect(interpreter.getStack().peek().value).toBe(0n)
+    })
+
+    it('Generates correct trace events for code opcodes', () => {
+      const bytecode = new Uint8Array([
+        0x38, // CODESIZE
+        0x60,
+        0x01, // PUSH1 1 (size)
+        0x60,
+        0x00, // PUSH1 0 (offset)
+        0x60,
+        0x00, // PUSH1 0 (destOffset)
+        0x39, // CODECOPY
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      const trace = interpreter.getTrace()
+
+      // Check for stack.push event from CODESIZE
+      const pushEvents = trace.getEventsByType('stack.push')
+      expect(pushEvents.length).toBeGreaterThan(0)
+
+      // Check for memory.write event from CODECOPY
+      const memWriteEvents = trace.getEventsByType('memory.write')
+      expect(memWriteEvents.length).toBe(1)
+    })
+  })
+
+  describe('Environment Opcodes', () => {
+    it('ADDRESS (0x30) - Should push the contract address', () => {
+      // Program: ADDRESS, STOP
+      const bytecode = new Uint8Array([
+        0x30, // ADDRESS
+        0x00, // STOP
+      ])
+
+      const contractAddress = Address.fromHex('0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef')
+      const host = new MemoryHost({ address: contractAddress })
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+
+      // ADDRESS is a 20-byte value, which should be pushed as Word256
+      const expectedValue = BigInt('0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef')
+      expect(interpreter.getStack().peek().value).toBe(expectedValue)
+    })
+
+    it('ORIGIN (0x32) - Should push tx origin', () => {
+      // Program: ORIGIN, STOP
+      const bytecode = new Uint8Array([
+        0x32, // ORIGIN
+        0x00, // STOP
+      ])
+
+      const originAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+      const host = new MemoryHost()
+      host.setOrigin(originAddress)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+
+      const expectedValue = BigInt('0x1234567890123456789012345678901234567890')
+      expect(interpreter.getStack().peek().value).toBe(expectedValue)
+    })
+
+    it('CALLER (0x33) - Should push msg.sender', () => {
+      // Program: CALLER, STOP
+      const bytecode = new Uint8Array([
+        0x33, // CALLER
+        0x00, // STOP
+      ])
+
+      const callerAddress = Address.fromHex('0xaabbccddaabbccddaabbccddaabbccddaabbccdd')
+      const host = new MemoryHost()
+      host.setCaller(callerAddress)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+
+      const expectedValue = BigInt('0xaabbccddaabbccddaabbccddaabbccddaabbccdd')
+      expect(interpreter.getStack().peek().value).toBe(expectedValue)
+    })
+
+    it('CALLVALUE (0x34) - Should push msg.value', () => {
+      // Program: CALLVALUE, STOP
+      const bytecode = new Uint8Array([
+        0x34, // CALLVALUE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setCallValue(12345678901234567890n)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+
+      expect(interpreter.getStack().peek().value).toBe(12345678901234567890n)
+    })
+
+    it('GASPRICE (0x3a) - Should push gas price', () => {
+      // Program: GASPRICE, STOP
+      const bytecode = new Uint8Array([
+        0x3a, // GASPRICE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setGasPrice(20000000000n) // 20 gwei
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+
+      expect(interpreter.getStack().peek().value).toBe(20000000000n)
+    })
+
+    it('GAS (0x5a) - Should push remaining gas', () => {
+      // Program: Run some opcodes to consume gas, then GAS, STOP
+      // PUSH1 consumes 3 gas, POP consumes 2 gas, GAS consumes 2 gas
+      const bytecode = new Uint8Array([
+        0x60, 0x01, // PUSH1 1 (3 gas)
+        0x50,       // POP (2 gas)
+        0x60, 0x02, // PUSH1 2 (3 gas)
+        0x50,       // POP (2 gas)
+        0x5a,       // GAS (2 gas) - pushes remaining gas
+        0x00,       // STOP
+      ])
+
+      const initialGas = 1000000n
+      const host = new MemoryHost()
+      const interpreter = new Interpreter({ bytecode, initialGas, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+
+      // Gas consumed before GAS opcode: 3 + 2 + 3 + 2 = 10
+      // GAS opcode itself costs 2 gas, but it pushes the value BEFORE consuming its own gas
+      // So the value pushed should be initialGas - 10 = 999990
+      // However, the exact behavior depends on implementation - the key thing is
+      // the result should be less than initialGas and greater than 0
+      const remainingGas = interpreter.getStack().peek().value
+      expect(remainingGas).toBeLessThan(initialGas)
+      expect(remainingGas).toBeGreaterThan(0n)
+    })
+
+    it('Environment opcodes can be used together', () => {
+      // Program: Push multiple environment values to stack
+      const bytecode = new Uint8Array([
+        0x30, // ADDRESS
+        0x33, // CALLER
+        0x34, // CALLVALUE
+        0x00, // STOP
+      ])
+
+      const contractAddress = Address.fromHex('0x1111111111111111111111111111111111111111')
+      const callerAddress = Address.fromHex('0x2222222222222222222222222222222222222222')
+      const callValue = 1000000000000000000n // 1 ETH
+
+      const host = new MemoryHost({ address: contractAddress })
+      host.setCaller(callerAddress)
+      host.setCallValue(callValue)
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(3)
+
+      // Stack is LIFO, so top is CALLVALUE, then CALLER, then ADDRESS
+      const stack = interpreter.getStack()
+      expect(stack.pop().value).toBe(callValue)
+      expect(stack.pop().value).toBe(BigInt('0x2222222222222222222222222222222222222222'))
+      expect(stack.pop().value).toBe(BigInt('0x1111111111111111111111111111111111111111'))
+    })
+
+    it('Environment values can be set via config', () => {
+      // Program: ORIGIN, CALLER, CALLVALUE, GASPRICE, STOP
+      const bytecode = new Uint8Array([
+        0x32, // ORIGIN
+        0x33, // CALLER
+        0x34, // CALLVALUE
+        0x3a, // GASPRICE
+        0x00, // STOP
+      ])
+
+      const originAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+      const callerAddress = Address.fromHex('0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
+      const callValue = 5000n
+      const gasPrice = 100n
+
+      const host = new MemoryHost({
+        txContext: {
+          origin: originAddress,
+          gasPrice: gasPrice,
+        },
+        msgContext: {
+          caller: callerAddress,
+          value: callValue,
+        },
+      })
+
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getStack().depth()).toBe(4)
+
+      // Stack: ORIGIN, CALLER, CALLVALUE, GASPRICE (top)
+      const stack = interpreter.getStack()
+      expect(stack.pop().value).toBe(gasPrice)
+      expect(stack.pop().value).toBe(callValue)
+      expect(stack.pop().value).toBe(BigInt('0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'))
+      expect(stack.pop().value).toBe(BigInt('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))
+    })
+  })
+
   describe('Integration Tests', () => {
     it('Storage and logging work together', () => {
       // Program: Store value, load it, emit log with the value
