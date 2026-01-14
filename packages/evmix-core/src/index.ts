@@ -34,3 +34,8 @@ export { Opcode, getOpcodeName, isPushOpcode, getPushBytes } from './opcodes/Opc
 // Interpreter
 export { Interpreter } from './interpreter/Interpreter'
 export type { InterpreterConfig } from './interpreter/Interpreter'
+
+// Host
+export type { Host, LogEntry, TxContext, MsgContext, BlockContext, Account } from './host/Host'
+export { MemoryHost } from './host/MemoryHost'
+export type { MemoryHostConfig } from './host/MemoryHost'
