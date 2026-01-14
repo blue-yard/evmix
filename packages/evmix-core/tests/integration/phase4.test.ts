@@ -703,6 +703,198 @@ describe('Phase 4 Integration Tests - World Interaction', () => {
     })
   })
 
+  describe('Account Balance Opcodes', () => {
+    it('BALANCE returns zero for account with no balance', () => {
+      // Program: Push an address, then BALANCE
+      const someAddress = Address.fromHex('0xabcdef0123456789abcdef0123456789abcdef01')
+      const bytecode = new Uint8Array([
+        // Push 20-byte address onto stack
+        0x73, // PUSH20
+        ...someAddress.toBytes(),
+        0x31, // BALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      // Don't set any balance - should default to 0
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(0n)
+    })
+
+    it('BALANCE returns correct balance for account with set balance', () => {
+      // Program: Push an address, then BALANCE
+      const someAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+      const expectedBalance = 1000000000000000000n // 1 ETH in wei
+      const bytecode = new Uint8Array([
+        // Push 20-byte address onto stack
+        0x73, // PUSH20
+        ...someAddress.toBytes(),
+        0x31, // BALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBalance(someAddress, expectedBalance)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(expectedBalance)
+    })
+
+    it('BALANCE can read balance of multiple different addresses', () => {
+      const address1 = Address.fromHex('0x1111111111111111111111111111111111111111')
+      const address2 = Address.fromHex('0x2222222222222222222222222222222222222222')
+      const balance1 = 500n
+      const balance2 = 1000n
+
+      const bytecode = new Uint8Array([
+        // Get balance of address1
+        0x73, // PUSH20
+        ...address1.toBytes(),
+        0x31, // BALANCE
+        // Get balance of address2
+        0x73, // PUSH20
+        ...address2.toBytes(),
+        0x31, // BALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBalance(address1, balance1)
+      host.setBalance(address2, balance2)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.getStack().depth()).toBe(2)
+      const result2 = interpreter.getStack().pop()
+      const result1 = interpreter.getStack().pop()
+      expect(result1.value).toBe(balance1)
+      expect(result2.value).toBe(balance2)
+    })
+
+    it('SELFBALANCE returns zero when contract has no balance', () => {
+      const contractAddr = Address.fromHex('0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef')
+      const bytecode = new Uint8Array([
+        0x47, // SELFBALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost({ address: contractAddr })
+      // Don't set any balance
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(0n)
+    })
+
+    it('SELFBALANCE returns correct balance of current contract', () => {
+      const contractAddr = Address.fromHex('0xcafebabecafebabecafebabecafebabecafebabe')
+      const contractBalance = 5000000000000000000n // 5 ETH in wei
+      const bytecode = new Uint8Array([
+        0x47, // SELFBALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost({ address: contractAddr })
+      host.setBalance(contractAddr, contractBalance)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.isHalted()).toBe(true)
+      expect(interpreter.getHaltReason()).toBe(HaltReason.STOP)
+      expect(interpreter.getStack().depth()).toBe(1)
+      expect(interpreter.getStack().peek().value).toBe(contractBalance)
+    })
+
+    it('SELFBALANCE and BALANCE return same value for current contract', () => {
+      const contractAddr = Address.fromHex('0x9999999999999999999999999999999999999999')
+      const balance = 123456789n
+
+      const bytecode = new Uint8Array([
+        // First get SELFBALANCE
+        0x47, // SELFBALANCE
+        // Then get BALANCE of same address
+        0x73, // PUSH20
+        ...contractAddr.toBytes(),
+        0x31, // BALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost({ address: contractAddr })
+      host.setBalance(contractAddr, balance)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      expect(interpreter.getStack().depth()).toBe(2)
+      const balanceResult = interpreter.getStack().pop()
+      const selfBalanceResult = interpreter.getStack().pop()
+      expect(selfBalanceResult.value).toBe(balance)
+      expect(balanceResult.value).toBe(balance)
+      expect(selfBalanceResult.value).toBe(balanceResult.value)
+    })
+
+    it('BALANCE generates gas charge trace event', () => {
+      const someAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+      const balance = 1000n
+
+      const bytecode = new Uint8Array([
+        0x73, // PUSH20
+        ...someAddress.toBytes(),
+        0x31, // BALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost()
+      host.setBalance(someAddress, balance)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      const trace = interpreter.getTrace()
+      const gasEvents = trace.getEventsByType('gas.charge')
+
+      // Should have gas charges for PUSH20 and BALANCE
+      expect(gasEvents.length).toBeGreaterThanOrEqual(1)
+      // Find the BALANCE gas charge event
+      const balanceGasEvent = gasEvents.find((e: { reason?: string }) => e.reason === 'BALANCE')
+      expect(balanceGasEvent).toBeDefined()
+    })
+
+    it('SELFBALANCE generates gas charge trace event', () => {
+      const contractAddr = Address.fromHex('0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
+      const balance = 2000n
+
+      const bytecode = new Uint8Array([
+        0x47, // SELFBALANCE
+        0x00, // STOP
+      ])
+
+      const host = new MemoryHost({ address: contractAddr })
+      host.setBalance(contractAddr, balance)
+      const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
+      interpreter.run()
+
+      const trace = interpreter.getTrace()
+      const gasEvents = trace.getEventsByType('gas.charge')
+
+      // Should have gas charge for SELFBALANCE
+      expect(gasEvents.length).toBeGreaterThanOrEqual(1)
+      // Find the SELFBALANCE gas charge event
+      const selfBalanceGasEvent = gasEvents.find((e: { reason?: string }) => e.reason === 'SELFBALANCE')
+      expect(selfBalanceGasEvent).toBeDefined()
+    })
+  })
+
   describe('Integration Tests', () => {
     it('Storage and logging work together', () => {
       // Program: Store value, load it, emit log with the value
