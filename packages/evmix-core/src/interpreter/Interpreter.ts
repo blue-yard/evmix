@@ -28,6 +28,7 @@ import {
 } from '../opcodes/data'
 import { executeSLOAD, executeSSTORE } from '../opcodes/storage'
 import { executeLOG0, executeLOG1, executeLOG2, executeLOG3, executeLOG4 } from '../opcodes/logging'
+import { executeBALANCE, executeSELFBALANCE } from '../opcodes/account'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -273,6 +274,15 @@ export class Interpreter {
 
       case Opcode.LOG4:
         executeLOG4(this.state, this.stack, this.trace, this.host)
+        break
+
+      // Phase 4: Account balance operations
+      case Opcode.BALANCE:
+        executeBALANCE(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.SELFBALANCE:
+        executeSELFBALANCE(this.state, this.stack, this.trace, this.host)
         break
 
       default:
