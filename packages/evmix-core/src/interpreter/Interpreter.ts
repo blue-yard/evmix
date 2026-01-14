@@ -29,6 +29,31 @@ import {
 import { executeSLOAD, executeSSTORE } from '../opcodes/storage'
 import { executeLOG0, executeLOG1, executeLOG2, executeLOG3, executeLOG4 } from '../opcodes/logging'
 import { executeBALANCE, executeSELFBALANCE } from '../opcodes/account'
+import {
+  executeADDRESS,
+  executeORIGIN,
+  executeCALLER,
+  executeCALLVALUE,
+  executeGASPRICE,
+  executeGAS,
+} from '../opcodes/environment'
+import {
+  executeBLOCKHASH,
+  executeCOINBASE,
+  executeTIMESTAMP,
+  executeNUMBER,
+  executeDIFFICULTY,
+  executeGASLIMIT,
+  executeCHAINID,
+  executeBASEFEE,
+} from '../opcodes/blockinfo'
+import {
+  executeCODESIZE,
+  executeCODECOPY,
+  executeEXTCODESIZE,
+  executeEXTCODECOPY,
+  executeEXTCODEHASH,
+} from '../opcodes/code'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -283,6 +308,85 @@ export class Interpreter {
 
       case Opcode.SELFBALANCE:
         executeSELFBALANCE(this.state, this.stack, this.trace, this.host)
+        break
+
+      // Phase 4: Environment opcodes
+      case Opcode.ADDRESS:
+        executeADDRESS(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.ORIGIN:
+        executeORIGIN(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.CALLER:
+        executeCALLER(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.CALLVALUE:
+        executeCALLVALUE(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.GASPRICE:
+        executeGASPRICE(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.GAS:
+        executeGAS(this.state, this.stack, this.trace)
+        break
+
+      // Phase 4: Block info opcodes
+      case Opcode.BLOCKHASH:
+        executeBLOCKHASH(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.COINBASE:
+        executeCOINBASE(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.TIMESTAMP:
+        executeTIMESTAMP(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.NUMBER:
+        executeNUMBER(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.DIFFICULTY:
+        executeDIFFICULTY(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.GASLIMIT:
+        executeGASLIMIT(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.CHAINID:
+        executeCHAINID(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.BASEFEE:
+        executeBASEFEE(this.state, this.stack, this.trace, this.host)
+        break
+
+      // Phase 4: Code opcodes
+      case Opcode.CODESIZE:
+        executeCODESIZE(this.state, this.stack, this.trace, this.bytecode)
+        break
+
+      case Opcode.CODECOPY:
+        executeCODECOPY(this.state, this.stack, this.trace, this.bytecode)
+        break
+
+      case Opcode.EXTCODESIZE:
+        executeEXTCODESIZE(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.EXTCODECOPY:
+        executeEXTCODECOPY(this.state, this.stack, this.trace, this.host)
+        break
+
+      case Opcode.EXTCODEHASH:
+        executeEXTCODEHASH(this.state, this.stack, this.trace, this.host)
         break
 
       default:

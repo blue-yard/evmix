@@ -48,6 +48,22 @@ export enum Opcode {
   CODESIZE = 0x38,
   CODECOPY = 0x39,
   GASPRICE = 0x3a,
+  EXTCODESIZE = 0x3b,
+  EXTCODECOPY = 0x3c,
+  RETURNDATASIZE = 0x3d,
+  RETURNDATACOPY = 0x3e,
+  EXTCODEHASH = 0x3f,
+
+  // 0x40: Block Information
+  BLOCKHASH = 0x40,
+  COINBASE = 0x41,
+  TIMESTAMP = 0x42,
+  NUMBER = 0x43,
+  DIFFICULTY = 0x44,
+  GASLIMIT = 0x45,
+  CHAINID = 0x46,
+  SELFBALANCE = 0x47,
+  BASEFEE = 0x48,
 
   // 0x50: Stack, Memory, Storage and Flow Operations
   POP = 0x50,
