@@ -17,11 +17,9 @@ export function GasMeter() {
   const percentRemaining = Number((currentGas * 100n) / initialGas)
 
   return (
-    <div className="bg-evmix-panel border border-evmix-border rounded-lg p-4">
-      <h2 className="text-sm font-semibold text-evmix-muted mb-3">GAS</h2>
-
+    <div className="flex items-center gap-4">
       {/* Visual Meter */}
-      <div className="relative h-4 bg-evmix-bg rounded overflow-hidden">
+      <div className="relative w-32 h-2 bg-evmix-bg rounded overflow-hidden">
         <motion.div
           className="h-full bg-gradient-to-r from-evmix-success via-evmix-warning to-evmix-error"
           initial={{ width: '100%' }}
@@ -31,15 +29,20 @@ export function GasMeter() {
       </div>
 
       {/* Numbers */}
-      <div className="flex justify-between mt-2 text-xs">
+      <div className="flex gap-3 text-xs font-mono">
         <span className="text-evmix-muted">
-          Used: <span className="text-evmix-error">{usedGas.toString()}</span>
+          Used: <span className="text-evmix-error">{formatGas(usedGas)}</span>
         </span>
         <span className="text-evmix-muted">
-          Remaining:{' '}
-          <span className="text-evmix-success">{currentGas.toString()}</span>
+          Left: <span className="text-evmix-success">{formatGas(currentGas)}</span>
         </span>
       </div>
     </div>
   )
+}
+
+function formatGas(gas: bigint): string {
+  if (gas < 1000n) return gas.toString()
+  if (gas < 1_000_000n) return (Number(gas) / 1000).toFixed(1) + 'K'
+  return (Number(gas) / 1_000_000).toFixed(2) + 'M'
 }
