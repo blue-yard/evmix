@@ -91,9 +91,13 @@ import {
   executeCALL,
   executeSTATICCALL,
   executeDELEGATECALL,
+  executeCALLCODE,
+  executeCREATE,
+  executeCREATE2,
+  executeSELFDESTRUCT,
 } from '../opcodes/call'
 import { MemoryHost } from '../host/MemoryHost'
-import { CallParams, CallResult } from '../host/Host'
+import { CallParams, CallResult, CreateParams, CreateResult } from '../host/Host'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -136,6 +140,9 @@ export class Interpreter {
     if (this.host instanceof MemoryHost) {
       this.host.setCallExecutor((params: CallParams, parentHost: MemoryHost): CallResult => {
         return this.executeNestedCall(params, parentHost)
+      })
+      this.host.setCreateExecutor((params: CreateParams, parentHost: MemoryHost): CreateResult => {
+        return this.executeNestedCreate(params, parentHost)
       })
     }
   }
@@ -189,6 +196,131 @@ export class Interpreter {
         returnData: new Uint8Array(0),
         gasUsed: params.gas,
         gasRefund: 0n,
+      }
+    }
+  }
+
+  /**
+   * Execute a nested create (used by CREATE, CREATE2)
+   */
+  private executeNestedCreate(params: CreateParams, parentHost: MemoryHost): CreateResult {
+    // Compute the new contract address
+    let newAddress
+    if (params.salt !== undefined) {
+      // CREATE2 address
+      newAddress = parentHost.computeCreate2Address(params.caller, params.salt, params.initCode)
+    } else {
+      // CREATE address
+      const nonce = parentHost.getNonce(params.caller)
+      newAddress = parentHost.computeCreateAddress(params.caller, nonce)
+    }
+
+    // Check if address already has code (collision)
+    const existingCode = parentHost.getCode(newAddress)
+    if (existingCode.length > 0) {
+      return {
+        success: false,
+        address: newAddress,
+        returnData: new Uint8Array(0),
+        gasUsed: params.gas,
+      }
+    }
+
+    // Transfer value to new contract
+    if (params.value > 0n) {
+      const transferred = parentHost.transfer(params.caller, newAddress, params.value)
+      if (!transferred) {
+        // Insufficient balance
+        return {
+          success: false,
+          address: newAddress,
+          returnData: new Uint8Array(0),
+          gasUsed: params.gas,
+        }
+      }
+    }
+
+    // Increment sender's nonce (only for CREATE, not CREATE2)
+    if (params.salt === undefined) {
+      parentHost.incrementNonce(params.caller)
+    }
+
+    if (params.initCode.length === 0) {
+      // Empty init code - just create an empty contract
+      return {
+        success: true,
+        address: newAddress,
+        returnData: new Uint8Array(0),
+        gasUsed: 0n,
+      }
+    }
+
+    // Create child host for the init code execution
+    const childHost = new MemoryHost({
+      address: newAddress,
+      txContext: {
+        origin: parentHost.getOrigin(),
+        gasPrice: parentHost.getGasPrice(),
+      },
+      msgContext: {
+        caller: params.caller,
+        value: params.value,
+      },
+    })
+
+    // Share state with parent
+    childHost.setCallExecutor((callParams, host) => this.executeNestedCall(callParams, host))
+    childHost.setCreateExecutor((createParams, host) => this.executeNestedCreate(createParams, host))
+
+    // Create nested interpreter for init code
+    const childInterpreter = new Interpreter({
+      bytecode: params.initCode,
+      initialGas: params.gas,
+      calldata: new Uint8Array(0),
+      host: childHost,
+      depth: params.depth,
+    })
+
+    try {
+      childInterpreter.run()
+
+      const childState = childInterpreter.getState()
+      const gasUsed = params.gas - childState.gasRemaining
+
+      if (childState.haltReason === HaltReason.RETURN) {
+        // The return data is the contract code
+        parentHost.setCode(newAddress, childState.returnData)
+
+        return {
+          success: true,
+          address: newAddress,
+          returnData: childState.returnData,
+          gasUsed,
+        }
+      } else if (childState.haltReason === HaltReason.STOP) {
+        // No return data - empty code
+        return {
+          success: true,
+          address: newAddress,
+          returnData: new Uint8Array(0),
+          gasUsed,
+        }
+      } else {
+        // Init code failed
+        return {
+          success: false,
+          address: newAddress,
+          returnData: childState.returnData,
+          gasUsed,
+        }
+      }
+    } catch {
+      // Init code failed with exception
+      return {
+        success: false,
+        address: newAddress,
+        returnData: new Uint8Array(0),
+        gasUsed: params.gas,
       }
     }
   }
@@ -468,6 +600,24 @@ export class Interpreter {
 
       case Opcode.DELEGATECALL:
         executeDELEGATECALL(this.state, this.stack, this.trace, this.host, this.host.getAddress(), this.depth, this.host.getCallValue())
+        break
+
+      case Opcode.CALLCODE:
+        executeCALLCODE(this.state, this.stack, this.trace, this.host, this.host.getAddress(), this.depth)
+        break
+
+      // Contract creation operations
+      case Opcode.CREATE:
+        executeCREATE(this.state, this.stack, this.trace, this.host, this.host.getAddress(), this.depth)
+        break
+
+      case Opcode.CREATE2:
+        executeCREATE2(this.state, this.stack, this.trace, this.host, this.host.getAddress(), this.depth)
+        break
+
+      // Contract destruction
+      case Opcode.SELFDESTRUCT:
+        executeSELFDESTRUCT(this.state, this.stack, this.trace, this.host, this.host.getAddress())
         break
 
       // Phase 2: Control flow operations

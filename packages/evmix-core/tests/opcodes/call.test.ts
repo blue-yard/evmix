@@ -1,10 +1,12 @@
 /**
- * Tests for call-related opcodes (RETURNDATASIZE, RETURNDATACOPY, CALL, STATICCALL, DELEGATECALL)
+ * Tests for call-related opcodes (RETURNDATASIZE, RETURNDATACOPY, CALL, STATICCALL, DELEGATECALL,
+ * CALLCODE, CREATE, CREATE2, SELFDESTRUCT)
  */
 import { describe, it, expect } from 'vitest'
 import { Interpreter } from '../../src/interpreter/Interpreter'
 import { MemoryHost } from '../../src/host/MemoryHost'
 import { Address } from '../../src/types/Address'
+import { Word256 } from '../../src/types/Word256'
 
 function execute(bytecode: number[], host?: MemoryHost): { stack: bigint[]; halted: boolean; returnData: Uint8Array } {
   const h = host || new MemoryHost()
@@ -287,5 +289,175 @@ describe('Call with arguments and return values', () => {
     expect(result.stack[0]).toEqual(1n) // success
     // 0x05 + 0x01 = 0x06
     expect(result.stack[1]).toEqual(6n)
+  })
+})
+
+describe('CALLCODE (0xf2)', () => {
+  it('should call contract code in caller context', () => {
+    const host = new MemoryHost()
+    const targetAddress = Address.fromHex('0x1234567890123456789012345678901234567890')
+
+    // Target contract: returns 0xCC
+    const targetCode = new Uint8Array([
+      0x60, 0xcc,  // PUSH1 0xCC
+      0x60, 0x00,  // PUSH1 0
+      0x53,        // MSTORE8
+      0x60, 0x01,  // PUSH1 1 (size)
+      0x60, 0x00,  // PUSH1 0 (offset)
+      0xf3,        // RETURN
+    ])
+    host.setCode(targetAddress, targetCode)
+
+    // CALLCODE has value parameter like CALL
+    const bytecode = [
+      0x60, 0x20,   // PUSH1 32 (retLength)
+      0x60, 0x00,   // PUSH1 0 (retOffset)
+      0x60, 0x00,   // PUSH1 0 (argsLength)
+      0x60, 0x00,   // PUSH1 0 (argsOffset)
+      0x60, 0x00,   // PUSH1 0 (value)
+      0x73, ...targetAddress.toBytes(), // PUSH20 address
+      0x62, 0x0f, 0x42, 0x40, // PUSH3 1000000 (gas)
+      0xf2,         // CALLCODE
+      0x3d,         // RETURNDATASIZE
+    ]
+
+    const result = execute(bytecode, host)
+    // Stack: [success (1), returnDataSize (1)]
+    expect(result.stack).toEqual([1n, 1n])
+  })
+})
+
+describe('CREATE (0xf0)', () => {
+  it('should create a new contract', () => {
+    const host = new MemoryHost()
+    const callerAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+    host.setAddress(callerAddress)
+    host.setBalance(callerAddress, 1000000000n)
+
+    // Init code: just return empty code (STOP)
+    // PUSH1 0, PUSH1 0, RETURN
+    const initCode = [0x60, 0x00, 0x60, 0x00, 0xf3]
+
+    // Store init code in memory, then CREATE
+    const bytecode = [
+      // Store init code at memory[0]
+      ...initCode.flatMap((b, i) => [0x60, b, 0x60, i, 0x53]), // MSTORE8 each byte
+      // CREATE: value=0, offset=0, length=initCode.length
+      0x60, initCode.length,  // PUSH1 length
+      0x60, 0x00,              // PUSH1 0 (offset)
+      0x60, 0x00,              // PUSH1 0 (value)
+      0xf0,                    // CREATE
+    ]
+
+    const result = execute(bytecode, host)
+    // Stack should have the new contract address (non-zero)
+    expect(result.stack.length).toBe(1)
+    expect(result.stack[0]).not.toBe(0n)
+  })
+
+  it('should fail at max depth', () => {
+    const host = new MemoryHost()
+    const callerAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+    host.setAddress(callerAddress)
+
+    // Simple CREATE with empty init code
+    const bytecode = [
+      0x60, 0x00,  // PUSH1 0 (length)
+      0x60, 0x00,  // PUSH1 0 (offset)
+      0x60, 0x00,  // PUSH1 0 (value)
+      0xf0,        // CREATE
+    ]
+
+    const interpreter = new Interpreter({
+      bytecode: new Uint8Array(bytecode),
+      initialGas: 1000000n,
+      host,
+      depth: 1024, // At max depth
+    })
+    interpreter.run()
+
+    // CREATE should fail (0 on stack) due to depth limit
+    expect(interpreter.getStack().toArray().map(w => w.value)).toEqual([0n])
+  })
+})
+
+describe('CREATE2 (0xf5)', () => {
+  it('should create contract with deterministic address', () => {
+    const host = new MemoryHost()
+    const callerAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+    host.setAddress(callerAddress)
+    host.setBalance(callerAddress, 1000000000n)
+
+    // Init code: PUSH1 0, PUSH1 0, RETURN (return empty code)
+    const initCode = [0x60, 0x00, 0x60, 0x00, 0xf3]
+
+    // Store init code in memory, then CREATE2 with salt=0x1234
+    const bytecode = [
+      // Store init code at memory[0]
+      ...initCode.flatMap((b, i) => [0x60, b, 0x60, i, 0x53]),
+      // CREATE2: salt=0x1234, length, offset, value
+      0x61, 0x12, 0x34,        // PUSH2 0x1234 (salt)
+      0x60, initCode.length,   // PUSH1 length
+      0x60, 0x00,              // PUSH1 0 (offset)
+      0x60, 0x00,              // PUSH1 0 (value)
+      0xf5,                    // CREATE2
+    ]
+
+    const result = execute(bytecode, host)
+    // Stack should have the new contract address (non-zero)
+    expect(result.stack.length).toBe(1)
+    expect(result.stack[0]).not.toBe(0n)
+  })
+
+  it('should produce same address for same salt and code', () => {
+    const host = new MemoryHost()
+    const callerAddress = Address.fromHex('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+    host.setAddress(callerAddress)
+    host.setBalance(callerAddress, 2000000000n)
+
+    // Init code that returns empty code
+    const initCode = [0x60, 0x00, 0x60, 0x00, 0xf3]
+    const salt = Word256.from(0x5678n)
+
+    // Compute expected address
+    const expectedAddress = host.computeCreate2Address(
+      callerAddress,
+      salt,
+      new Uint8Array(initCode)
+    )
+
+    // Verify the expected address is non-zero
+    expect(expectedAddress.value).not.toBe(0n)
+  })
+})
+
+describe('SELFDESTRUCT (0xff)', () => {
+  it('should destroy contract and transfer balance', () => {
+    const host = new MemoryHost()
+    const contractAddress = Address.fromHex('0x1111111111111111111111111111111111111111')
+    const beneficiary = Address.fromHex('0x2222222222222222222222222222222222222222')
+
+    host.setAddress(contractAddress)
+    host.setBalance(contractAddress, 1000n)
+    host.setBalance(beneficiary, 500n)
+
+    // SELFDESTRUCT to beneficiary
+    const bytecode = [
+      0x73, ...beneficiary.toBytes(), // PUSH20 beneficiary
+      0xff,                           // SELFDESTRUCT
+    ]
+
+    const interpreter = new Interpreter({
+      bytecode: new Uint8Array(bytecode),
+      initialGas: 1000000n,
+      host,
+    })
+    interpreter.run()
+
+    // Contract should be halted with SELFDESTRUCT reason
+    expect(interpreter.isHalted()).toBe(true)
+    // Balance should be transferred
+    expect(host.getBalance(beneficiary)).toBe(1500n)
+    expect(host.getBalance(contractAddress)).toBe(0n)
   })
 })

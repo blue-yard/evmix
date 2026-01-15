@@ -7,7 +7,8 @@
 
 import { Word256 } from '../types/Word256'
 import { Address } from '../types/Address'
-import { Host, LogEntry, TxContext, MsgContext, BlockContext, CallParams, CallResult, CallKind } from './Host'
+import { Host, LogEntry, TxContext, MsgContext, BlockContext, CallParams, CallResult, CallKind, CreateParams, CreateResult } from './Host'
+import { keccak_256 } from '@noble/hashes/sha3'
 
 /**
  * Call executor function type - allows Interpreter to provide call handling
@@ -54,9 +55,14 @@ export class MemoryHost implements Host {
   private balances: Map<string, bigint>
   private codes: Map<string, Uint8Array>
   private codeHashes: Map<string, Word256>
+  private nonces: Map<string, bigint>
+  private selfdestructed: Set<string>
 
   // Call executor (set by Interpreter to handle nested calls)
   private callExecutor?: CallExecutor
+
+  // Create executor (set by Interpreter to handle contract creation)
+  private createExecutor?: (params: CreateParams, host: MemoryHost) => CreateResult
 
   constructor(config?: MemoryHostConfig) {
     this.storage = new Map()
@@ -65,6 +71,8 @@ export class MemoryHost implements Host {
     this.balances = new Map()
     this.codes = new Map()
     this.codeHashes = new Map()
+    this.nonces = new Map()
+    this.selfdestructed = new Set()
 
     // Set address
     this.address = config?.address || Address.zero()
@@ -291,6 +299,129 @@ export class MemoryHost implements Host {
     return this.callExecutor(params, this)
   }
 
+  /**
+   * Create a new contract
+   */
+  create(params: CreateParams): CreateResult {
+    if (!this.createExecutor) {
+      return {
+        success: false,
+        address: Address.zero(),
+        returnData: new Uint8Array(0),
+        gasUsed: params.gas,
+      }
+    }
+    return this.createExecutor(params, this)
+  }
+
+  /**
+   * Mark contract for destruction and transfer balance
+   */
+  selfdestruct(contractAddress: Address, beneficiary: Address): void {
+    // Transfer balance to beneficiary
+    const balance = this.getBalance(contractAddress)
+    if (balance > 0n) {
+      this.balances.set(contractAddress.toHex(), 0n)
+      const beneficiaryBalance = this.getBalance(beneficiary)
+      this.balances.set(beneficiary.toHex(), beneficiaryBalance + balance)
+    }
+
+    // Mark as selfdestructed
+    this.selfdestructed.add(contractAddress.toHex())
+  }
+
+  /**
+   * Get nonce for an address
+   */
+  getNonce(address: Address): bigint {
+    return this.nonces.get(address.toHex()) ?? 0n
+  }
+
+  /**
+   * Increment nonce for an address
+   */
+  incrementNonce(address: Address): void {
+    const current = this.getNonce(address)
+    this.nonces.set(address.toHex(), current + 1n)
+  }
+
+  /**
+   * Transfer value between accounts
+   */
+  transfer(from: Address, to: Address, value: bigint): boolean {
+    if (value === 0n) return true
+
+    const fromBalance = this.getBalance(from)
+    if (fromBalance < value) return false
+
+    this.balances.set(from.toHex(), fromBalance - value)
+    const toBalance = this.getBalance(to)
+    this.balances.set(to.toHex(), toBalance + value)
+    return true
+  }
+
+  /**
+   * Compute CREATE address: keccak256(rlp([sender, nonce]))[12:]
+   */
+  computeCreateAddress(sender: Address, nonce: bigint): Address {
+    // RLP encode [sender, nonce]
+    // For simplicity, we'll use a simplified encoding
+    const senderBytes = sender.toBytes()
+
+    // RLP encode nonce
+    let nonceBytes: Uint8Array
+    if (nonce === 0n) {
+      nonceBytes = new Uint8Array([0x80]) // RLP empty string
+    } else {
+      // Convert nonce to minimal bytes
+      const hexNonce = nonce.toString(16)
+      const paddedHex = hexNonce.length % 2 ? '0' + hexNonce : hexNonce
+      const bytes = new Uint8Array(paddedHex.length / 2)
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(paddedHex.substr(i * 2, 2), 16)
+      }
+      if (bytes.length === 1 && bytes[0] < 0x80) {
+        nonceBytes = bytes
+      } else {
+        nonceBytes = new Uint8Array([0x80 + bytes.length, ...bytes])
+      }
+    }
+
+    // Build RLP list: 0xc0 + length prefix + sender (0x94 + 20 bytes) + nonce
+    const senderRlp = new Uint8Array([0x94, ...senderBytes])
+    const listContent = new Uint8Array([...senderRlp, ...nonceBytes])
+    let rlpEncoded: Uint8Array
+    if (listContent.length < 56) {
+      rlpEncoded = new Uint8Array([0xc0 + listContent.length, ...listContent])
+    } else {
+      // Long list (unlikely for CREATE)
+      rlpEncoded = new Uint8Array([0xf7 + 1, listContent.length, ...listContent])
+    }
+
+    // Hash and take last 20 bytes
+    const hash = keccak_256(rlpEncoded)
+    return Address.fromBytes(hash.slice(12))
+  }
+
+  /**
+   * Compute CREATE2 address: keccak256(0xff ++ sender ++ salt ++ keccak256(initCode))[12:]
+   */
+  computeCreate2Address(sender: Address, salt: Word256, initCode: Uint8Array): Address {
+    const prefix = new Uint8Array([0xff])
+    const senderBytes = sender.toBytes()
+    const saltBytes = salt.toBytes()
+    const initCodeHash = keccak_256(initCode)
+
+    const data = new Uint8Array(1 + 20 + 32 + 32)
+    data.set(prefix, 0)
+    data.set(senderBytes, 1)
+    data.set(saltBytes, 21)
+    data.set(initCodeHash, 53)
+
+    const hash = keccak_256(data)
+    return Address.fromBytes(hash.slice(12))
+  }
+
   // ==================== Test Helpers ====================
 
   /**
@@ -405,6 +536,13 @@ export class MemoryHost implements Host {
   }
 
   /**
+   * Set the create executor (called by Interpreter to enable contract creation)
+   */
+  setCreateExecutor(executor: (params: CreateParams, host: MemoryHost) => CreateResult): void {
+    this.createExecutor = executor
+  }
+
+  /**
    * Create a child host for a nested call
    * Preserves storage and account state but updates call context
    */
@@ -436,7 +574,10 @@ export class MemoryHost implements Host {
     child.codes = this.codes
     child.codeHashes = this.codeHashes
     child.blockHashes = this.blockHashes
+    child.nonces = this.nonces
+    child.selfdestructed = this.selfdestructed
     child.callExecutor = this.callExecutor
+    child.createExecutor = this.createExecutor
 
     // Set address based on call kind
     if (params.kind === CallKind.DELEGATECALL || params.kind === CallKind.CALLCODE) {

@@ -93,6 +93,28 @@ export interface CallResult {
 }
 
 /**
+ * Parameters for a create operation
+ */
+export interface CreateParams {
+  caller: Address
+  value: bigint
+  initCode: Uint8Array
+  gas: bigint
+  salt?: Word256 // For CREATE2
+  depth: number
+}
+
+/**
+ * Result of a create operation
+ */
+export interface CreateResult {
+  success: boolean
+  address: Address
+  returnData: Uint8Array
+  gasUsed: bigint
+}
+
+/**
  * Host interface - provides world state access to the EVM
  *
  * This is the boundary between the EVM interpreter and the outside world.
@@ -248,4 +270,40 @@ export interface Host {
    * @returns Call result (success, returnData, gasUsed)
    */
   call(params: CallParams): CallResult
+
+  /**
+   * Create a new contract
+   * @param params Create parameters (caller, value, initCode, gas, salt?)
+   * @returns Create result (success, address, returnData, gasUsed)
+   */
+  create(params: CreateParams): CreateResult
+
+  /**
+   * Mark contract for destruction and transfer balance
+   * @param contractAddress Address of contract being destroyed
+   * @param beneficiary Address to receive the balance
+   */
+  selfdestruct(contractAddress: Address, beneficiary: Address): void
+
+  /**
+   * Get the nonce for an address (used for CREATE address calculation)
+   * @param address Account address
+   * @returns Current nonce
+   */
+  getNonce(address: Address): bigint
+
+  /**
+   * Increment the nonce for an address
+   * @param address Account address
+   */
+  incrementNonce(address: Address): void
+
+  /**
+   * Transfer value between accounts
+   * @param from Sender address
+   * @param to Recipient address
+   * @param value Amount to transfer
+   * @returns true if successful, false if insufficient balance
+   */
+  transfer(from: Address, to: Address, value: bigint): boolean
 }

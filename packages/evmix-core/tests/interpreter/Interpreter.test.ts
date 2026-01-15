@@ -226,7 +226,7 @@ describe('Interpreter', () => {
   })
 
   it('halts on invalid opcode', () => {
-    const bytecode = new Uint8Array([0xff]) // Not implemented
+    const bytecode = new Uint8Array([0x0c]) // Undefined opcode (not implemented)
     const host = new MemoryHost()
     const interpreter = new Interpreter({ bytecode, initialGas: 1000000n, host })
 

@@ -31,4 +31,7 @@ export enum HaltReason {
 
   /** Invalid instruction (0xfe INVALID opcode) */
   INVALID_INSTRUCTION = 'INVALID_INSTRUCTION',
+
+  /** SELFDESTRUCT opcode (0xff) - contract destroyed */
+  SELFDESTRUCT = 'SELFDESTRUCT',
 }
