@@ -60,6 +60,39 @@ export interface Account {
 }
 
 /**
+ * Call kind for the call() method
+ */
+export enum CallKind {
+  CALL = 'call',
+  CALLCODE = 'callcode',
+  DELEGATECALL = 'delegatecall',
+  STATICCALL = 'staticcall',
+}
+
+/**
+ * Parameters for a call operation
+ */
+export interface CallParams {
+  kind: CallKind
+  gas: bigint
+  to: Address
+  value: bigint
+  input: Uint8Array
+  caller: Address
+  depth: number
+}
+
+/**
+ * Result of a call operation
+ */
+export interface CallResult {
+  success: boolean
+  returnData: Uint8Array
+  gasUsed: bigint
+  gasRefund: bigint
+}
+
+/**
  * Host interface - provides world state access to the EVM
  *
  * This is the boundary between the EVM interpreter and the outside world.
@@ -206,4 +239,13 @@ export interface Host {
    * @returns Keccak256 of code, or special values for EOAs/empty
    */
   getCodeHash(address: Address): Word256
+
+  // ==================== Call Operations ====================
+
+  /**
+   * Execute a call to another contract
+   * @param params Call parameters (gas, to, value, input, etc.)
+   * @returns Call result (success, returnData, gasUsed)
+   */
+  call(params: CallParams): CallResult
 }

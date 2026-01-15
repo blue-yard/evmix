@@ -85,6 +85,15 @@ import {
   executeEXTCODEHASH,
 } from '../opcodes/code'
 import { executeKECCAK256 } from '../opcodes/crypto'
+import {
+  executeRETURNDATASIZE,
+  executeRETURNDATACOPY,
+  executeCALL,
+  executeSTATICCALL,
+  executeDELEGATECALL,
+} from '../opcodes/call'
+import { MemoryHost } from '../host/MemoryHost'
+import { CallParams, CallResult } from '../host/Host'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -98,6 +107,7 @@ export interface InterpreterConfig {
   initialGas: bigint
   calldata?: Uint8Array
   host: Host
+  depth?: number // Call depth (0 for top-level)
 }
 
 export class Interpreter {
@@ -108,6 +118,7 @@ export class Interpreter {
   private trace: TraceCollector
   private validJumpDests: Set<number>
   private host: Host
+  private depth: number
 
   constructor(config: InterpreterConfig) {
     this.bytecode = config.bytecode
@@ -116,9 +127,70 @@ export class Interpreter {
     this.stack = new Stack()
     this.trace = new TraceCollector()
     this.host = config.host
+    this.depth = config.depth ?? 0
 
     // Phase 2: Build valid jump destinations
     this.validJumpDests = buildJumpDestinations(this.bytecode)
+
+    // Register call executor with MemoryHost for nested calls
+    if (this.host instanceof MemoryHost) {
+      this.host.setCallExecutor((params: CallParams, parentHost: MemoryHost): CallResult => {
+        return this.executeNestedCall(params, parentHost)
+      })
+    }
+  }
+
+  /**
+   * Execute a nested call (used by CALL, STATICCALL, DELEGATECALL)
+   */
+  private executeNestedCall(params: CallParams, parentHost: MemoryHost): CallResult {
+    // Get the code for the target address
+    const code = parentHost.getCode(params.to)
+
+    if (code.length === 0) {
+      // No code at address - call succeeds with empty return data
+      return {
+        success: true,
+        returnData: new Uint8Array(0),
+        gasUsed: 0n,
+        gasRefund: 0n,
+      }
+    }
+
+    // Create child host for the call
+    const childHost = parentHost.createChildHost(params)
+
+    // Create nested interpreter
+    const childInterpreter = new Interpreter({
+      bytecode: code,
+      initialGas: params.gas,
+      calldata: params.input,
+      host: childHost,
+      depth: params.depth,
+    })
+
+    // Run the nested call
+    try {
+      childInterpreter.run()
+
+      const childState = childInterpreter.getState()
+      const gasUsed = params.gas - childState.gasRemaining
+
+      return {
+        success: !childState.halted || childState.haltReason === HaltReason.STOP || childState.haltReason === HaltReason.RETURN,
+        returnData: childState.returnData,
+        gasUsed,
+        gasRefund: 0n,
+      }
+    } catch {
+      // Call failed with exception
+      return {
+        success: false,
+        returnData: new Uint8Array(0),
+        gasUsed: params.gas,
+        gasRefund: 0n,
+      }
+    }
   }
 
   /**
@@ -374,6 +446,28 @@ export class Interpreter {
 
       case Opcode.REVERT:
         executeREVERT(this.state, this.stack, this.trace)
+        break
+
+      // Return data operations
+      case Opcode.RETURNDATASIZE:
+        executeRETURNDATASIZE(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.RETURNDATACOPY:
+        executeRETURNDATACOPY(this.state, this.stack, this.trace)
+        break
+
+      // Call operations
+      case Opcode.CALL:
+        executeCALL(this.state, this.stack, this.trace, this.host, this.host.getAddress(), this.depth)
+        break
+
+      case Opcode.STATICCALL:
+        executeSTATICCALL(this.state, this.stack, this.trace, this.host, this.host.getAddress(), this.depth)
+        break
+
+      case Opcode.DELEGATECALL:
+        executeDELEGATECALL(this.state, this.stack, this.trace, this.host, this.host.getAddress(), this.depth, this.host.getCallValue())
         break
 
       // Phase 2: Control flow operations

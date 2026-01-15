@@ -7,7 +7,12 @@
 
 import { Word256 } from '../types/Word256'
 import { Address } from '../types/Address'
-import { Host, LogEntry, TxContext, MsgContext, BlockContext } from './Host'
+import { Host, LogEntry, TxContext, MsgContext, BlockContext, CallParams, CallResult, CallKind } from './Host'
+
+/**
+ * Call executor function type - allows Interpreter to provide call handling
+ */
+export type CallExecutor = (params: CallParams, host: MemoryHost) => CallResult
 
 /**
  * Configuration for MemoryHost
@@ -49,6 +54,9 @@ export class MemoryHost implements Host {
   private balances: Map<string, bigint>
   private codes: Map<string, Uint8Array>
   private codeHashes: Map<string, Word256>
+
+  // Call executor (set by Interpreter to handle nested calls)
+  private callExecutor?: CallExecutor
 
   constructor(config?: MemoryHostConfig) {
     this.storage = new Map()
@@ -261,6 +269,28 @@ export class MemoryHost implements Host {
     return Word256.zero()
   }
 
+  // ==================== Call Operations ====================
+
+  /**
+   * Execute a call to another contract
+   * Uses the registered call executor to handle nested calls
+   */
+  call(params: CallParams): CallResult {
+    if (!this.callExecutor) {
+      // No executor registered - return failure
+      // This can happen if trying to call without an Interpreter context
+      return {
+        success: false,
+        returnData: new Uint8Array(0),
+        gasUsed: params.gas,
+        gasRefund: 0n,
+      }
+    }
+
+    // Delegate to the executor (which is set by the Interpreter)
+    return this.callExecutor(params, this)
+  }
+
   // ==================== Test Helpers ====================
 
   /**
@@ -365,5 +395,58 @@ export class MemoryHost implements Host {
    */
   getAllStorage(): Map<string, Word256> {
     return new Map(this.storage)
+  }
+
+  /**
+   * Set the call executor (called by Interpreter to enable nested calls)
+   */
+  setCallExecutor(executor: CallExecutor): void {
+    this.callExecutor = executor
+  }
+
+  /**
+   * Create a child host for a nested call
+   * Preserves storage and account state but updates call context
+   */
+  createChildHost(params: CallParams): MemoryHost {
+    const child = new MemoryHost({
+      txContext: {
+        origin: this.origin,
+        gasPrice: this.gasPrice,
+      },
+      msgContext: {
+        caller: params.caller,
+        value: params.value,
+      },
+      blockContext: {
+        coinbase: this.coinbase,
+        timestamp: this.timestamp,
+        number: this.blockNumber,
+        difficulty: this.difficulty,
+        gasLimit: this.gasLimit,
+        chainId: this.chainId,
+        baseFee: this.baseFee,
+      },
+    })
+
+    // Share storage and account state with parent
+    // In a real implementation, this would be a copy-on-write structure
+    child.storage = this.storage
+    child.balances = this.balances
+    child.codes = this.codes
+    child.codeHashes = this.codeHashes
+    child.blockHashes = this.blockHashes
+    child.callExecutor = this.callExecutor
+
+    // Set address based on call kind
+    if (params.kind === CallKind.DELEGATECALL || params.kind === CallKind.CALLCODE) {
+      // For delegatecall/callcode, address stays the same (caller's context)
+      child.address = this.address
+    } else {
+      // For call/staticcall, address is the target
+      child.address = params.to
+    }
+
+    return child
   }
 }

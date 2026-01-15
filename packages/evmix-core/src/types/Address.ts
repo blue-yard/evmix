@@ -1,3 +1,5 @@
+import { Word256 } from './Word256'
+
 /**
  * Address - A 20-byte Ethereum address (160 bits)
  */
@@ -15,6 +17,13 @@ export class Address {
    */
   static from(value: bigint): Address {
     return new Address(value)
+  }
+
+  /**
+   * Create an Address from a Word256 (takes lower 160 bits)
+   */
+  static fromWord256(word: Word256): Address {
+    return new Address(word.value)
   }
 
   /**
