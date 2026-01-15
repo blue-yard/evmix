@@ -16,7 +16,8 @@ interface ProgramViewProps {
 
 export function ProgramView({ className = '' }: ProgramViewProps) {
   const session = useDebugStore((s) => s.session)
-  const snapshot = useDebugStore((s) => s.snapshot)
+  const events = useDebugStore((s) => s.events)
+  const currentStep = useDebugStore((s) => s.currentStep)
   const [autoScroll, setAutoScroll] = useState(true)
   const currentRowRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -27,8 +28,20 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
     return disassemble(session.getBytecode())
   }, [session])
 
-  // Find current instruction
-  const currentPC = snapshot?.pc ?? 0
+  // Get current PC from the events (more accurate than snapshot)
+  const currentPC = useMemo(() => {
+    // Find the opcode.start events and get the one for current step
+    const opcodeEvents = events.filter((e) => e.type === 'opcode.start')
+    if (currentStep > 0 && currentStep <= opcodeEvents.length) {
+      return opcodeEvents[currentStep - 1].pc
+    }
+    // Step 0 = before first instruction, show first instruction
+    if (opcodeEvents.length > 0) {
+      return opcodeEvents[0].pc
+    }
+    return 0
+  }, [events, currentStep])
+
   const currentIndex = useMemo(
     () => findInstructionIndexAtPC(instructions, currentPC),
     [instructions, currentPC]
@@ -44,17 +57,16 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
     }
   }, [currentIndex, autoScroll])
 
-  // Track visited PCs for showing execution history
+  // Track visited PCs for showing execution history (up to current step)
   const visitedPCs = useMemo(() => {
     const visited = new Set<number>()
-    const events = session?.getEvents() ?? []
-    for (const event of events) {
-      if (event.type === 'opcode.start') {
-        visited.add(event.pc)
-      }
+    const opcodeEvents = events.filter((e) => e.type === 'opcode.start')
+    // Only mark visited up to current step
+    for (let i = 0; i < Math.min(currentStep, opcodeEvents.length); i++) {
+      visited.add(opcodeEvents[i].pc)
     }
     return visited
-  }, [session, snapshot])
+  }, [events, currentStep])
 
   if (!session || instructions.length === 0) {
     return (
