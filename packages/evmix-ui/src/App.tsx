@@ -4,6 +4,7 @@ import { Timeline } from './components/Timeline'
 import { StackPanel, MemoryPanel, StoragePanel } from './components/panels'
 import { GasMeter } from './components/GasMeter'
 import { ProgramView } from './components/ProgramView'
+import { CurrentInstruction } from './components/CurrentInstruction'
 import { useDebugStore } from './store/debugStore'
 
 type ActivePanel = 'stack' | 'memory' | 'storage'
@@ -206,8 +207,9 @@ export default function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {session ? (
             <>
-              {/* Timeline */}
-              <div className="flex-none p-4 border-b border-evmix-border">
+              {/* Current Instruction + Timeline */}
+              <div className="flex-none p-4 border-b border-evmix-border space-y-4">
+                <CurrentInstruction />
                 <Timeline />
               </div>
 
