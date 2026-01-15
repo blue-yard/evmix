@@ -11,6 +11,24 @@ import { Host } from '../host/Host'
 import { executeAdd, executeMul, executeSub, executeDiv } from '../opcodes/arithmetic'
 import { executeStop } from '../opcodes/system'
 import {
+  executeLT,
+  executeGT,
+  executeSLT,
+  executeSGT,
+  executeEQ,
+  executeISZERO,
+} from '../opcodes/comparison'
+import {
+  executeAND,
+  executeOR,
+  executeXOR,
+  executeNOT,
+  executeBYTE,
+  executeSHL,
+  executeSHR,
+  executeSAR,
+} from '../opcodes/bitwise'
+import {
   executePC,
   executeJUMP,
   executeJUMPI,
@@ -208,6 +226,64 @@ export class Interpreter {
 
       case Opcode.DIV:
         executeDiv(this.state, this.stack, this.trace)
+        break
+
+      // Comparison operations
+      case Opcode.LT:
+        executeLT(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.GT:
+        executeGT(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SLT:
+        executeSLT(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SGT:
+        executeSGT(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.EQ:
+        executeEQ(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.ISZERO:
+        executeISZERO(this.state, this.stack, this.trace)
+        break
+
+      // Bitwise operations
+      case Opcode.AND:
+        executeAND(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.OR:
+        executeOR(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.XOR:
+        executeXOR(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.NOT:
+        executeNOT(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.BYTE:
+        executeBYTE(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SHL:
+        executeSHL(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SHR:
+        executeSHR(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SAR:
+        executeSAR(this.state, this.stack, this.trace)
         break
 
       // Stack operations

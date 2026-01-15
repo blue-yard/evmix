@@ -196,6 +196,34 @@ export class Word256 {
   }
 
   /**
+   * Signed less than comparison
+   * Interprets both values as two's complement signed integers
+   */
+  slt(other: Word256): boolean {
+    return this.toSigned() < other.toSigned()
+  }
+
+  /**
+   * Signed greater than comparison
+   * Interprets both values as two's complement signed integers
+   */
+  sgt(other: Word256): boolean {
+    return this.toSigned() > other.toSigned()
+  }
+
+  /**
+   * Convert to signed bigint (two's complement)
+   */
+  toSigned(): bigint {
+    const signBit = 1n << 255n
+    if (this.value >= signBit) {
+      // Negative: subtract 2^256 to get negative value
+      return this.value - (1n << 256n)
+    }
+    return this.value
+  }
+
+  /**
    * Bitwise operations
    */
 
@@ -231,6 +259,25 @@ export class Word256 {
       return Word256.zero()
     }
     return new Word256(this.value >> shift.value)
+  }
+
+  /**
+   * Signed arithmetic right shift
+   * Preserves sign bit (fills with 1s for negative numbers)
+   */
+  sar(shift: Word256): Word256 {
+    if (shift.value >= 256n) {
+      // If shifting by 256 or more, result is all 0s (positive) or all 1s (negative)
+      const signBit = 1n << 255n
+      if (this.value >= signBit) {
+        return Word256.max() // All 1s for negative
+      }
+      return Word256.zero() // All 0s for positive
+    }
+    // Arithmetic right shift preserves sign
+    const signed = this.toSigned()
+    const shifted = signed >> shift.value
+    return new Word256(shifted)
   }
 
   /**
