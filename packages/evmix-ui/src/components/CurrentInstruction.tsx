@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDebugStore } from '../store/debugStore'
+import type { ExecutionSnapshot } from '../lib/types'
 import {
   disassemble,
   findInstructionAtPC,
@@ -120,37 +121,138 @@ function InstructionDetail({ instruction }: InstructionDetailProps) {
 }
 
 interface ExecutionCompleteProps {
-  snapshot: { halted: boolean; haltReason?: string; gasRemaining: bigint }
+  snapshot: ExecutionSnapshot
 }
 
 function ExecutionComplete({ snapshot }: ExecutionCompleteProps) {
-  const reason = snapshot.haltReason || 'unknown'
-  const isSuccess = reason === 'stop' || reason === 'return'
-  const isRevert = reason === 'revert'
+  const session = useDebugStore((s) => s.session)
+  const events = useDebugStore((s) => s.events)
+  const totalSteps = useDebugStore((s) => s.totalSteps)
+
+  const reason = snapshot.haltReason ?? 'UNKNOWN'
+  const isSuccess = reason === 'STOP' || reason === 'RETURN'
+  const isRevert = reason === 'REVERT'
+
+  // Calculate gas used
+  const initialGas = session?.getSnapshot(0).gasRemaining ?? 0n
+  const gasUsed = initialGas - snapshot.gasRemaining
+
+  // Count events by type
+  const eventStats = useMemo(() => {
+    const stats = {
+      storageWrites: 0,
+      storageReads: 0,
+      memoryWrites: 0,
+      logs: 0,
+    }
+    for (const event of events) {
+      if (event.type === 'storage.write') stats.storageWrites++
+      if (event.type === 'storage.read') stats.storageReads++
+      if (event.type === 'memory.write') stats.memoryWrites++
+      if (event.type === 'log') stats.logs++
+    }
+    return stats
+  }, [events])
+
+  // Try to extract return data from final memory (for RETURN/REVERT)
+  // This is a simplification - actual return data would come from the halt event
+  const returnDataHex = useMemo(() => {
+    if (reason !== 'RETURN' && reason !== 'REVERT') return null
+    // For now, show first 64 bytes of memory if any
+    if (snapshot.memory.length === 0) return null
+    const bytes = snapshot.memory.slice(0, Math.min(64, snapshot.memory.length))
+    return '0x' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+  }, [reason, snapshot.memory])
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="text-center py-2"
+      className="space-y-4"
     >
-      <div
-        className={`text-2xl font-bold mb-2 ${
-          isSuccess
-            ? 'text-evmix-success'
-            : isRevert
-            ? 'text-evmix-warning'
-            : 'text-evmix-error'
-        }`}
-      >
-        {isSuccess ? '✓ Execution Complete' : isRevert ? '↩ Reverted' : '✗ Failed'}
+      {/* Status header */}
+      <div className="text-center">
+        <div
+          className={`text-2xl font-bold mb-1 ${
+            isSuccess
+              ? 'text-evmix-success'
+              : isRevert
+              ? 'text-evmix-warning'
+              : 'text-evmix-error'
+          }`}
+        >
+          {isSuccess ? '✓ Execution Complete' : isRevert ? '↩ Reverted' : '✗ Failed'}
+        </div>
+        <div className="text-sm text-evmix-muted">
+          Halted with: <span className="text-evmix-text font-mono">{reason.toUpperCase()}</span>
+        </div>
       </div>
-      <div className="text-sm text-evmix-muted">
-        Halted with: <span className="text-evmix-text font-mono">{reason.toUpperCase()}</span>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+        <StatBox
+          label="Steps"
+          value={totalSteps.toLocaleString()}
+          color="text-evmix-accent"
+        />
+        <StatBox
+          label="Gas Used"
+          value={formatGas(gasUsed)}
+          subValue={`of ${formatGas(initialGas)}`}
+          color="text-evmix-error"
+        />
+        <StatBox
+          label="Storage"
+          value={`${eventStats.storageWrites}W / ${eventStats.storageReads}R`}
+          color="text-orange-400"
+        />
+        <StatBox
+          label="Logs"
+          value={eventStats.logs.toString()}
+          color="text-indigo-400"
+        />
       </div>
-      <div className="text-xs text-evmix-muted mt-1">
-        Gas remaining: {snapshot.gasRemaining.toLocaleString()}
-      </div>
+
+      {/* Return data (if any) */}
+      {returnDataHex && returnDataHex !== '0x' && (
+        <div className="bg-evmix-bg rounded p-3">
+          <div className="text-xs text-evmix-muted mb-1">
+            {reason === 'RETURN' ? 'Return Data:' : 'Revert Data:'}
+          </div>
+          <code className="text-xs text-evmix-text font-mono break-all">
+            {returnDataHex.length > 130 ? returnDataHex.slice(0, 130) + '...' : returnDataHex}
+          </code>
+          {/* Try to decode as number if small */}
+          {returnDataHex.length <= 66 && returnDataHex !== '0x' && (
+            <div className="text-xs text-evmix-muted mt-1">
+              = {BigInt(returnDataHex).toString()}
+            </div>
+          )}
+        </div>
+      )}
     </motion.div>
   )
+}
+
+interface StatBoxProps {
+  label: string
+  value: string
+  subValue?: string
+  color?: string
+}
+
+function StatBox({ label, value, subValue, color = 'text-evmix-text' }: StatBoxProps) {
+  return (
+    <div className="bg-evmix-bg rounded p-2">
+      <div className="text-xs text-evmix-muted">{label}</div>
+      <div className={`text-lg font-bold ${color}`}>{value}</div>
+      {subValue && <div className="text-xs text-evmix-muted">{subValue}</div>}
+    </div>
+  )
+}
+
+function formatGas(gas: bigint): string {
+  if (gas < 1000n) return gas.toString()
+  if (gas < 1_000_000n) return (Number(gas) / 1000).toFixed(1) + 'K'
+  return (Number(gas) / 1_000_000).toFixed(2) + 'M'
 }
