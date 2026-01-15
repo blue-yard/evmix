@@ -162,6 +162,96 @@ export class Word256 {
     return new Word256(this.value % other.value)
   }
 
+  /**
+   * Signed division (two's complement)
+   * Returns 0 if divisor is 0
+   * Special case: -2^255 / -1 = -2^255 (overflow)
+   */
+  sdiv(other: Word256): Word256 {
+    if (other.value === 0n) {
+      return Word256.zero()
+    }
+    const a = this.toSigned()
+    const b = other.toSigned()
+
+    // Special case: MIN_INT256 / -1 would overflow, result is MIN_INT256
+    const MIN_INT256 = -(1n << 255n)
+    if (a === MIN_INT256 && b === -1n) {
+      return new Word256(1n << 255n) // MIN_INT256 as unsigned
+    }
+
+    const result = a / b
+    return new Word256(result)
+  }
+
+  /**
+   * Signed modulo (two's complement)
+   * Returns 0 if divisor is 0
+   * Result sign matches dividend sign
+   */
+  smod(other: Word256): Word256 {
+    if (other.value === 0n) {
+      return Word256.zero()
+    }
+    const a = this.toSigned()
+    const b = other.toSigned()
+    // In EVM, smod result sign follows the dividend (a)
+    const result = a % b
+    return new Word256(result)
+  }
+
+  /**
+   * Addition modulo N: (a + b) % N
+   * Intermediate sum doesn't overflow (uses arbitrary precision)
+   * Returns 0 if N is 0
+   */
+  addmod(b: Word256, n: Word256): Word256 {
+    if (n.value === 0n) {
+      return Word256.zero()
+    }
+    // Use BigInt's arbitrary precision for intermediate sum
+    const sum = this.value + b.value
+    return new Word256(sum % n.value)
+  }
+
+  /**
+   * Multiplication modulo N: (a * b) % N
+   * Intermediate product doesn't overflow (uses arbitrary precision)
+   * Returns 0 if N is 0
+   */
+  mulmod(b: Word256, n: Word256): Word256 {
+    if (n.value === 0n) {
+      return Word256.zero()
+    }
+    // Use BigInt's arbitrary precision for intermediate product
+    const product = this.value * b.value
+    return new Word256(product % n.value)
+  }
+
+  /**
+   * Sign-extend from (b+1) bytes
+   * If b >= 31, returns unchanged value
+   * Otherwise, sign-extends the (b+1)th byte
+   */
+  signExtend(b: Word256): Word256 {
+    if (b.value >= 31n) {
+      return new Word256(this.value)
+    }
+
+    const byteIndex = Number(b.value)
+    const bitIndex = (byteIndex + 1) * 8
+    const signBit = 1n << BigInt(bitIndex - 1)
+    const mask = signBit - 1n
+
+    if (this.value & signBit) {
+      // Sign bit is 1, extend with 1s
+      return new Word256(this.value | ~mask)
+    } else {
+      // Sign bit is 0, mask off higher bits
+      return new Word256(this.value & mask)
+    }
+  }
+
   exp(other: Word256): Word256 {
     // Modular exponentiation
     let base = this.value

@@ -8,7 +8,19 @@ import { getOpcodeName, isPushOpcode, getPushBytes, Opcode } from '../opcodes/Op
 import { Host } from '../host/Host'
 
 // Import opcode implementations
-import { executeAdd, executeMul, executeSub, executeDiv } from '../opcodes/arithmetic'
+import {
+  executeAdd,
+  executeMul,
+  executeSub,
+  executeDiv,
+  executeSdiv,
+  executeMod,
+  executeSmod,
+  executeAddmod,
+  executeMulmod,
+  executeExp,
+  executeSignextend,
+} from '../opcodes/arithmetic'
 import { executeStop } from '../opcodes/system'
 import {
   executeLT,
@@ -226,6 +238,34 @@ export class Interpreter {
 
       case Opcode.DIV:
         executeDiv(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SDIV:
+        executeSdiv(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.MOD:
+        executeMod(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SMOD:
+        executeSmod(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.ADDMOD:
+        executeAddmod(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.MULMOD:
+        executeMulmod(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.EXP:
+        executeExp(this.state, this.stack, this.trace)
+        break
+
+      case Opcode.SIGNEXTEND:
+        executeSignextend(this.state, this.stack, this.trace)
         break
 
       // Comparison operations
