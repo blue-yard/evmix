@@ -159,6 +159,138 @@ export function getInstructionAnnotation(inst: Instruction): string | null {
 }
 
 /**
+ * Opcode descriptions for tooltips
+ */
+export const OPCODE_DESCRIPTIONS: Record<string, string> = {
+  // System
+  STOP: 'Halts execution successfully',
+  RETURN: 'Returns data from memory and halts',
+  REVERT: 'Reverts execution with return data',
+  INVALID: 'Invalid opcode - always fails',
+
+  // Arithmetic
+  ADD: 'a + b (modulo 2^256)',
+  MUL: 'a * b (modulo 2^256)',
+  SUB: 'a - b (modulo 2^256)',
+  DIV: 'a / b (integer division, 0 if b=0)',
+  SDIV: 'Signed division',
+  MOD: 'a % b (0 if b=0)',
+  SMOD: 'Signed modulo',
+  ADDMOD: '(a + b) % N',
+  MULMOD: '(a * b) % N',
+  EXP: 'a^b (modulo 2^256)',
+  SIGNEXTEND: 'Sign-extend a value',
+
+  // Comparison
+  LT: '1 if a < b, else 0',
+  GT: '1 if a > b, else 0',
+  SLT: 'Signed less-than',
+  SGT: 'Signed greater-than',
+  EQ: '1 if a == b, else 0',
+  ISZERO: '1 if a == 0, else 0',
+
+  // Bitwise
+  AND: 'Bitwise AND',
+  OR: 'Bitwise OR',
+  XOR: 'Bitwise XOR',
+  NOT: 'Bitwise NOT (flip all bits)',
+  BYTE: 'Get byte at position from value',
+  SHL: 'Shift left',
+  SHR: 'Shift right (logical)',
+  SAR: 'Shift right (arithmetic/signed)',
+
+  // Keccak
+  KECCAK256: 'Keccak-256 hash of memory region',
+
+  // Environment
+  ADDRESS: 'Push current contract address',
+  BALANCE: 'Get balance of address',
+  ORIGIN: 'Push tx.origin (original sender)',
+  CALLER: 'Push msg.sender (immediate caller)',
+  CALLVALUE: 'Push msg.value (wei sent)',
+  CALLDATALOAD: 'Load 32 bytes from calldata',
+  CALLDATASIZE: 'Push calldata size in bytes',
+  CALLDATACOPY: 'Copy calldata to memory',
+  CODESIZE: 'Push size of current code',
+  CODECOPY: 'Copy code to memory',
+  GASPRICE: 'Push tx.gasprice',
+  EXTCODESIZE: 'Get code size of address',
+  EXTCODECOPY: 'Copy external code to memory',
+  RETURNDATASIZE: 'Size of last return data',
+  RETURNDATACOPY: 'Copy return data to memory',
+  EXTCODEHASH: 'Get code hash of address',
+
+  // Block info
+  BLOCKHASH: 'Get hash of recent block',
+  COINBASE: 'Push block.coinbase (miner)',
+  TIMESTAMP: 'Push block.timestamp',
+  NUMBER: 'Push block.number',
+  DIFFICULTY: 'Push block.difficulty',
+  GASLIMIT: 'Push block.gaslimit',
+  CHAINID: 'Push chain ID (EIP-155)',
+  SELFBALANCE: 'Push balance of current contract',
+  BASEFEE: 'Push block.basefee (EIP-1559)',
+
+  // Stack/Memory/Storage
+  POP: 'Remove top stack item',
+  MLOAD: 'Load 32 bytes from memory',
+  MSTORE: 'Store 32 bytes to memory',
+  MSTORE8: 'Store 1 byte to memory',
+  SLOAD: 'Load from storage slot',
+  SSTORE: 'Store to storage slot',
+  MSIZE: 'Push current memory size',
+  GAS: 'Push remaining gas',
+
+  // Control flow
+  JUMP: 'Unconditional jump to destination',
+  JUMPI: 'Jump if condition is non-zero',
+  PC: 'Push program counter',
+  JUMPDEST: 'Valid jump destination marker',
+
+  // Logging
+  LOG0: 'Emit log with 0 topics',
+  LOG1: 'Emit log with 1 topic',
+  LOG2: 'Emit log with 2 topics',
+  LOG3: 'Emit log with 3 topics',
+  LOG4: 'Emit log with 4 topics',
+}
+
+/**
+ * Get description for an opcode
+ */
+export function getOpcodeDescription(name: string): string {
+  // Handle PUSH variants
+  if (name.startsWith('PUSH')) {
+    const bytes = name.replace('PUSH', '')
+    return `Push ${bytes}-byte value onto stack`
+  }
+
+  // Handle DUP variants
+  if (name.startsWith('DUP')) {
+    const n = name.replace('DUP', '')
+    return `Duplicate ${n}${getOrdinalSuffix(parseInt(n))} stack item`
+  }
+
+  // Handle SWAP variants
+  if (name.startsWith('SWAP')) {
+    const n = name.replace('SWAP', '')
+    return `Swap top with ${n}${getOrdinalSuffix(parseInt(n) + 1)} stack item`
+  }
+
+  return OPCODE_DESCRIPTIONS[name] || 'EVM opcode'
+}
+
+function getOrdinalSuffix(n: number): string {
+  if (n >= 11 && n <= 13) return 'th'
+  switch (n % 10) {
+    case 1: return 'st'
+    case 2: return 'nd'
+    case 3: return 'rd'
+    default: return 'th'
+  }
+}
+
+/**
  * Categorize opcodes for color coding
  */
 export type OpcodeCategory =

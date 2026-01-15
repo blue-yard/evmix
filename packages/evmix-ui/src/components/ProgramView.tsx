@@ -7,6 +7,7 @@ import {
   getInstructionAnnotation,
   getOpcodeCategory,
   getCategoryColorClass,
+  getOpcodeDescription,
   type Instruction,
 } from '../lib/disassembler'
 
@@ -148,11 +149,18 @@ const InstructionRow = forwardRef<HTMLDivElement, InstructionRowProps>(
     const category = getOpcodeCategory(instruction.opcode)
     const colorClass = getCategoryColorClass(category)
     const annotation = getInstructionAnnotation(instruction)
+    const description = getOpcodeDescription(instruction.name)
+
+    // Build tooltip
+    const tooltip = instruction.data !== undefined
+      ? `${instruction.name}: ${description}\nValue: ${instruction.data} (0x${instruction.data.toString(16)})`
+      : `${instruction.name}: ${description}`
 
     return (
       <div
         ref={ref}
-        className={`flex items-center gap-3 px-3 py-1.5 border-l-2 transition-colors ${
+        title={tooltip}
+        className={`flex items-center gap-3 px-3 py-1.5 border-l-2 transition-colors cursor-help ${
           isCurrent
             ? 'bg-evmix-accent/20 border-evmix-accent'
             : isExecuted
@@ -168,7 +176,7 @@ const InstructionRow = forwardRef<HTMLDivElement, InstructionRowProps>(
         {/* Jump destination marker */}
         <span className="w-4 text-center">
           {instruction.isJumpDest && (
-            <span className="text-purple-400" title="Jump Destination">
+            <span className="text-purple-400" title="Valid jump target">
               {'->'}
             </span>
           )}
