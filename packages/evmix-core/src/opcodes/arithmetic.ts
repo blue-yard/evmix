@@ -409,7 +409,7 @@ export function executeMulmod(state: MachineState, stack: Stack, trace: TraceCol
  */
 export function executeExp(state: MachineState, stack: Stack, trace: TraceCollector): void {
   // Peek at exponent to calculate gas (we'll pop it properly below)
-  const expValue = stack.peek(0).value
+  const expValue = stack.peek().value
 
   // Gas = 10 + 50 * byte_size(exponent)
   // byte_size is the number of bytes needed to represent the exponent

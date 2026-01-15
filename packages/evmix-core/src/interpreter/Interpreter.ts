@@ -84,6 +84,7 @@ import {
   executeEXTCODECOPY,
   executeEXTCODEHASH,
 } from '../opcodes/code'
+import { executeKECCAK256 } from '../opcodes/crypto'
 
 /**
  * Interpreter - The core EVM interpreter
@@ -266,6 +267,11 @@ export class Interpreter {
 
       case Opcode.SIGNEXTEND:
         executeSignextend(this.state, this.stack, this.trace)
+        break
+
+      // Cryptographic operations
+      case Opcode.KECCAK256:
+        executeKECCAK256(this.state, this.stack, this.trace)
         break
 
       // Comparison operations
