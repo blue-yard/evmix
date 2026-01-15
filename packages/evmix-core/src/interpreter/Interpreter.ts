@@ -755,6 +755,11 @@ export class Interpreter {
         executeEXTCODEHASH(this.state, this.stack, this.trace, this.host)
         break
 
+      // INVALID opcode - explicitly invalid instruction
+      case Opcode.INVALID:
+        this.state.halt(HaltReason.INVALID_INSTRUCTION)
+        return
+
       default:
         this.state.halt(HaltReason.INVALID_OPCODE)
         return
