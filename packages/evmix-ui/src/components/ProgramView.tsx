@@ -22,6 +22,7 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
   const [autoScroll, setAutoScroll] = useState(true)
   const currentRowRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const jumpTargetRef = useRef<HTMLDivElement>(null)
 
   // Disassemble bytecode
   const instructions = useMemo(() => {
@@ -37,6 +38,35 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
     () => findInstructionIndexAtPC(instructions, currentPC),
     [instructions, currentPC]
   )
+
+  // Detect jump target when current instruction is JUMP/JUMPI
+  const jumpTarget = useMemo(() => {
+    if (!snapshot || !instructions[currentIndex]) return null
+
+    const currentInst = instructions[currentIndex]
+    const isJump = currentInst.name === 'JUMP' || currentInst.name === 'JUMPI'
+
+    if (!isJump || snapshot.stack.length === 0) return null
+
+    // Jump destination is top of stack
+    const destHex = snapshot.stack[snapshot.stack.length - 1]
+    const dest = Number(BigInt(destHex))
+
+    // Find instruction at that PC
+    const targetIndex = findInstructionIndexAtPC(instructions, dest)
+    if (targetIndex === -1) return null
+
+    const targetInst = instructions[targetIndex]
+    // Verify it's a valid JUMPDEST
+    const isValid = targetInst?.isJumpDest
+
+    return {
+      pc: dest,
+      index: targetIndex,
+      isValid,
+      isConditional: currentInst.name === 'JUMPI',
+    }
+  }, [snapshot, instructions, currentIndex])
 
   // Auto-scroll to current instruction
   useEffect(() => {
@@ -108,7 +138,10 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
             instruction={inst}
             isCurrent={index === currentIndex}
             isExecuted={executedPCs.has(inst.pc)}
-            ref={index === currentIndex ? currentRowRef : null}
+            isJumpTarget={jumpTarget?.index === index}
+            jumpTargetValid={jumpTarget?.index === index ? jumpTarget.isValid : undefined}
+            isConditionalTarget={jumpTarget?.index === index ? jumpTarget.isConditional : false}
+            ref={index === currentIndex ? currentRowRef : jumpTarget?.index === index ? jumpTargetRef : null}
           />
         ))}
       </div>
@@ -133,6 +166,10 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 bg-red-400 rounded" /> System
         </span>
+        <span className="text-evmix-muted">|</span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 border-2 border-purple-400 rounded" /> Jump Target
+        </span>
       </div>
     </div>
   )
@@ -142,10 +179,20 @@ interface InstructionRowProps {
   instruction: Instruction
   isCurrent: boolean
   isExecuted: boolean
+  isJumpTarget?: boolean
+  jumpTargetValid?: boolean
+  isConditionalTarget?: boolean
 }
 
 const InstructionRow = forwardRef<HTMLDivElement, InstructionRowProps>(
-  function InstructionRow({ instruction, isCurrent, isExecuted }, ref) {
+  function InstructionRow({
+    instruction,
+    isCurrent,
+    isExecuted,
+    isJumpTarget,
+    jumpTargetValid,
+    isConditionalTarget
+  }, ref) {
     const category = getOpcodeCategory(instruction.opcode)
     const colorClass = getCategoryColorClass(category)
     const annotation = getInstructionAnnotation(instruction)
@@ -156,17 +203,30 @@ const InstructionRow = forwardRef<HTMLDivElement, InstructionRowProps>(
       ? `${instruction.name}: ${description}\nValue: ${instruction.data} (0x${instruction.data.toString(16)})`
       : `${instruction.name}: ${description}`
 
+    // Determine row styling
+    const getRowClass = () => {
+      if (isCurrent) {
+        return 'bg-evmix-accent/20 border-evmix-accent'
+      }
+      if (isJumpTarget) {
+        if (jumpTargetValid === false) {
+          return 'bg-red-500/20 border-red-500 animate-pulse'
+        }
+        return isConditionalTarget
+          ? 'bg-purple-500/20 border-purple-500'
+          : 'bg-purple-500/30 border-purple-500'
+      }
+      if (isExecuted) {
+        return 'bg-evmix-bg/50 border-transparent hover:bg-evmix-bg'
+      }
+      return 'border-transparent hover:bg-evmix-bg/30'
+    }
+
     return (
       <div
         ref={ref}
         title={tooltip}
-        className={`flex items-center gap-3 px-3 py-1.5 border-l-2 transition-colors cursor-help ${
-          isCurrent
-            ? 'bg-evmix-accent/20 border-evmix-accent'
-            : isExecuted
-            ? 'bg-evmix-bg/50 border-transparent hover:bg-evmix-bg'
-            : 'border-transparent hover:bg-evmix-bg/30'
-        }`}
+        className={`flex items-center gap-3 px-3 py-1.5 border-l-2 transition-colors cursor-help ${getRowClass()}`}
       >
         {/* PC */}
         <span className="text-evmix-muted w-12 text-right text-xs">
@@ -211,6 +271,17 @@ const InstructionRow = forwardRef<HTMLDivElement, InstructionRowProps>(
             className="text-evmix-accent"
           >
             {'<--'}
+          </motion.span>
+        )}
+
+        {/* Jump target indicator */}
+        {isJumpTarget && !isCurrent && (
+          <motion.span
+            initial={{ scale: 0, x: 10 }}
+            animate={{ scale: 1, x: 0 }}
+            className={jumpTargetValid === false ? 'text-red-500' : 'text-purple-400'}
+          >
+            {jumpTargetValid === false ? '✗ invalid' : isConditionalTarget ? '⤵ if true' : '⤵ jump'}
           </motion.span>
         )}
       </div>
