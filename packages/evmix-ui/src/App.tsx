@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { BytecodeInput } from './components/BytecodeInput'
 import { Timeline } from './components/Timeline'
 import { StackPanel, MemoryPanel, StoragePanel } from './components/panels'
@@ -7,6 +7,77 @@ import { ProgramView } from './components/ProgramView'
 import { useDebugStore } from './store/debugStore'
 
 type ActivePanel = 'stack' | 'memory' | 'storage'
+
+/**
+ * Global keyboard shortcuts
+ */
+function useKeyboardShortcuts() {
+  const session = useDebugStore((s) => s.session)
+  const isPlaying = useDebugStore((s) => s.isPlaying)
+  const currentStep = useDebugStore((s) => s.currentStep)
+  const totalSteps = useDebugStore((s) => s.totalSteps)
+  const stepForward = useDebugStore((s) => s.stepForward)
+  const stepBackward = useDebugStore((s) => s.stepBackward)
+  const setStep = useDebugStore((s) => s.setStep)
+  const play = useDebugStore((s) => s.play)
+  const pause = useDebugStore((s) => s.pause)
+
+  useEffect(() => {
+    if (!session) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture if user is typing in an input/textarea
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'l':
+          e.preventDefault()
+          stepForward()
+          break
+        case 'ArrowLeft':
+        case 'h':
+          e.preventDefault()
+          stepBackward()
+          break
+        case ' ':
+          e.preventDefault()
+          if (isPlaying) {
+            pause()
+          } else {
+            play()
+          }
+          break
+        case 'Home':
+          e.preventDefault()
+          setStep(0)
+          break
+        case 'End':
+          e.preventDefault()
+          setStep(totalSteps)
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          // Jump back 10 steps
+          setStep(Math.max(0, currentStep - 10))
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          // Jump forward 10 steps
+          setStep(Math.min(totalSteps, currentStep + 10))
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [session, isPlaying, currentStep, totalSteps, stepForward, stepBackward, setStep, play, pause])
+}
 
 /**
  * Detect which areas changed at the current step
@@ -67,6 +138,9 @@ export default function App() {
   const [activePanel, setActivePanel] = useState<ActivePanel>('stack')
   const { stackChanged, memoryChanged, storageChanged } = useChangeIndicators()
 
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts()
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -78,7 +152,10 @@ export default function App() {
               An observable, educational Ethereum Virtual Machine
             </p>
           </div>
-          {session && <GasMeter />}
+          <div className="flex items-center gap-4">
+            {session && <GasMeter />}
+            {session && <KeyboardHints />}
+          </div>
         </div>
       </header>
 
@@ -192,5 +269,58 @@ function PanelTab({ active, onClick, children, changed, changeColor = 'text-evmi
         />
       )}
     </button>
+  )
+}
+
+function KeyboardHints() {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-xs text-evmix-muted hover:text-evmix-text flex items-center gap-1"
+        title="Keyboard shortcuts"
+      >
+        <span className="opacity-50">⌨</span>
+        <span>Keys</span>
+      </button>
+
+      {expanded && (
+        <div className="absolute right-0 top-full mt-2 bg-evmix-panel border border-evmix-border rounded-lg p-3 shadow-lg z-50 w-48">
+          <div className="text-xs space-y-1.5">
+            <div className="font-semibold text-evmix-muted mb-2">Keyboard Shortcuts</div>
+            <div className="flex justify-between">
+              <span className="text-evmix-muted">Step forward</span>
+              <span className="text-evmix-text"><Kbd>→</Kbd> <Kbd>l</Kbd></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-evmix-muted">Step back</span>
+              <span className="text-evmix-text"><Kbd>←</Kbd> <Kbd>h</Kbd></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-evmix-muted">Jump ±10</span>
+              <span className="text-evmix-text"><Kbd>↑</Kbd> <Kbd>↓</Kbd></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-evmix-muted">Play/Pause</span>
+              <span className="text-evmix-text"><Kbd>Space</Kbd></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-evmix-muted">Start/End</span>
+              <span className="text-evmix-text"><Kbd>Home</Kbd> <Kbd>End</Kbd></span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="px-1.5 py-0.5 bg-evmix-bg border border-evmix-border rounded text-[10px] font-mono">
+      {children}
+    </kbd>
   )
 }
