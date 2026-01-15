@@ -7,8 +7,6 @@ import {
 } from '@evmix/core'
 import type { ExecutionSnapshot, DebugSessionConfig, TraceSource } from './types'
 
-const SNAPSHOT_INTERVAL = 50 // Take snapshot every N steps
-
 /**
  * DebugSession - Manages EVM execution with time-travel support
  *
@@ -67,12 +65,12 @@ export class DebugSession implements TraceSource {
   }
 
   /**
-   * Execute the entire program and capture snapshots
+   * Execute the entire program and capture snapshots after each opcode
    */
   runToCompletion(): void {
     if (this.executed) return
 
-    // Take initial snapshot
+    // Take initial snapshot (step 0 = before first opcode)
     this.captureSnapshot(0)
 
     let step = 0
@@ -80,14 +78,10 @@ export class DebugSession implements TraceSource {
       this.interpreter.step()
       step++
 
-      // Take periodic snapshots
-      if (step % SNAPSHOT_INTERVAL === 0) {
-        this.captureSnapshot(step)
-      }
+      // Capture snapshot after EVERY opcode for accurate time-travel
+      this.captureSnapshot(step)
     }
 
-    // Final snapshot
-    this.captureSnapshot(step)
     this.totalSteps = step
     this.currentStep = step
     this.executed = true

@@ -16,7 +16,7 @@ interface ProgramViewProps {
 
 export function ProgramView({ className = '' }: ProgramViewProps) {
   const session = useDebugStore((s) => s.session)
-  const events = useDebugStore((s) => s.events)
+  const snapshot = useDebugStore((s) => s.snapshot)
   const currentStep = useDebugStore((s) => s.currentStep)
   const [autoScroll, setAutoScroll] = useState(true)
   const currentRowRef = useRef<HTMLDivElement>(null)
@@ -28,19 +28,9 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
     return disassemble(session.getBytecode())
   }, [session])
 
-  // Get current PC from the events (more accurate than snapshot)
-  const currentPC = useMemo(() => {
-    // Find the opcode.start events and get the one for current step
-    const opcodeEvents = events.filter((e) => e.type === 'opcode.start')
-    if (currentStep > 0 && currentStep <= opcodeEvents.length) {
-      return opcodeEvents[currentStep - 1].pc
-    }
-    // Step 0 = before first instruction, show first instruction
-    if (opcodeEvents.length > 0) {
-      return opcodeEvents[0].pc
-    }
-    return 0
-  }, [events, currentStep])
+  // Get current PC from snapshot (now accurate since we snapshot every step)
+  // snapshot.pc = the NEXT instruction to execute
+  const currentPC = snapshot?.pc ?? 0
 
   const currentIndex = useMemo(
     () => findInstructionIndexAtPC(instructions, currentPC),
@@ -57,16 +47,23 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
     }
   }, [currentIndex, autoScroll])
 
-  // Track visited PCs for showing execution history (up to current step)
-  const visitedPCs = useMemo(() => {
-    const visited = new Set<number>()
-    const opcodeEvents = events.filter((e) => e.type === 'opcode.start')
-    // Only mark visited up to current step
-    for (let i = 0; i < Math.min(currentStep, opcodeEvents.length); i++) {
-      visited.add(opcodeEvents[i].pc)
+  // Track which instructions have been executed (by looking at all events up to current)
+  const executedPCs = useMemo(() => {
+    const executed = new Set<number>()
+    const allEvents = session?.getEvents() ?? []
+
+    // Count opcode.start events to find which ones are before currentStep
+    let opcodeCount = 0
+    for (const event of allEvents) {
+      if (event.type === 'opcode.start') {
+        if (opcodeCount < currentStep) {
+          executed.add(event.pc)
+        }
+        opcodeCount++
+      }
     }
-    return visited
-  }, [events, currentStep])
+    return executed
+  }, [session, currentStep])
 
   if (!session || instructions.length === 0) {
     return (
@@ -109,7 +106,7 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
             key={inst.pc}
             instruction={inst}
             isCurrent={index === currentIndex}
-            isVisited={visitedPCs.has(inst.pc)}
+            isExecuted={executedPCs.has(inst.pc)}
             ref={index === currentIndex ? currentRowRef : null}
           />
         ))}
@@ -143,11 +140,11 @@ export function ProgramView({ className = '' }: ProgramViewProps) {
 interface InstructionRowProps {
   instruction: Instruction
   isCurrent: boolean
-  isVisited: boolean
+  isExecuted: boolean
 }
 
 const InstructionRow = forwardRef<HTMLDivElement, InstructionRowProps>(
-  function InstructionRow({ instruction, isCurrent, isVisited }, ref) {
+  function InstructionRow({ instruction, isCurrent, isExecuted }, ref) {
     const category = getOpcodeCategory(instruction.opcode)
     const colorClass = getCategoryColorClass(category)
     const annotation = getInstructionAnnotation(instruction)
@@ -158,7 +155,7 @@ const InstructionRow = forwardRef<HTMLDivElement, InstructionRowProps>(
         className={`flex items-center gap-3 px-3 py-1.5 border-l-2 transition-colors ${
           isCurrent
             ? 'bg-evmix-accent/20 border-evmix-accent'
-            : isVisited
+            : isExecuted
             ? 'bg-evmix-bg/50 border-transparent hover:bg-evmix-bg'
             : 'border-transparent hover:bg-evmix-bg/30'
         }`}
