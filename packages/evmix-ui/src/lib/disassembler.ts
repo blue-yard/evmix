@@ -159,125 +159,467 @@ export function getInstructionAnnotation(inst: Instruction): string | null {
 }
 
 /**
- * Opcode descriptions for tooltips
+ * Detailed opcode info for tooltips
+ * Format: { stack: [inputs] → [outputs], desc, effect? }
  */
-export const OPCODE_DESCRIPTIONS: Record<string, string> = {
-  // System
-  STOP: 'Halts execution successfully',
-  RETURN: 'Returns data from memory and halts',
-  REVERT: 'Reverts execution with return data',
-  INVALID: 'Invalid opcode - always fails',
+interface OpcodeInfo {
+  stack: string      // e.g., "[a, b] → [a+b]"
+  desc: string       // Brief description
+  effect?: string    // Side effects (memory, storage, etc.)
+}
 
-  // Arithmetic
-  ADD: 'a + b (modulo 2^256)',
-  MUL: 'a * b (modulo 2^256)',
-  SUB: 'a - b (modulo 2^256)',
-  DIV: 'a / b (integer division, 0 if b=0)',
-  SDIV: 'Signed division',
-  MOD: 'a % b (0 if b=0)',
-  SMOD: 'Signed modulo',
-  ADDMOD: '(a + b) % N',
-  MULMOD: '(a * b) % N',
-  EXP: 'a^b (modulo 2^256)',
-  SIGNEXTEND: 'Sign-extend a value',
+export const OPCODE_INFO: Record<string, OpcodeInfo> = {
+  // === STOP & ARITHMETIC ===
+  STOP: {
+    stack: '[] → []',
+    desc: 'Halts execution successfully',
+    effect: 'Execution stops, transaction succeeds',
+  },
+  ADD: {
+    stack: '[a, b] → [a+b]',
+    desc: 'Addition modulo 2²⁵⁶',
+    effect: 'Overflow wraps around (no revert)',
+  },
+  MUL: {
+    stack: '[a, b] → [a*b]',
+    desc: 'Multiplication modulo 2²⁵⁶',
+    effect: 'Overflow wraps around',
+  },
+  SUB: {
+    stack: '[a, b] → [a-b]',
+    desc: 'Subtraction modulo 2²⁵⁶',
+    effect: 'Underflow wraps (0-1 = 2²⁵⁶-1)',
+  },
+  DIV: {
+    stack: '[a, b] → [a/b]',
+    desc: 'Integer division',
+    effect: 'Returns 0 if b=0 (no revert)',
+  },
+  SDIV: {
+    stack: '[a, b] → [a/b]',
+    desc: 'Signed integer division',
+    effect: 'Treats values as two\'s complement',
+  },
+  MOD: {
+    stack: '[a, b] → [a%b]',
+    desc: 'Modulo remainder',
+    effect: 'Returns 0 if b=0',
+  },
+  SMOD: {
+    stack: '[a, b] → [a%b]',
+    desc: 'Signed modulo',
+    effect: 'Sign of result matches sign of a',
+  },
+  ADDMOD: {
+    stack: '[a, b, N] → [(a+b)%N]',
+    desc: 'Addition then modulo',
+    effect: 'Intermediate sum doesn\'t overflow',
+  },
+  MULMOD: {
+    stack: '[a, b, N] → [(a*b)%N]',
+    desc: 'Multiplication then modulo',
+    effect: 'Intermediate product doesn\'t overflow',
+  },
+  EXP: {
+    stack: '[a, b] → [a^b]',
+    desc: 'Exponentiation modulo 2²⁵⁶',
+    effect: 'Gas cost scales with exponent size',
+  },
+  SIGNEXTEND: {
+    stack: '[b, x] → [y]',
+    desc: 'Sign-extend x from (b+1) bytes',
+    effect: 'Extends sign bit to fill 256 bits',
+  },
 
-  // Comparison
-  LT: '1 if a < b, else 0',
-  GT: '1 if a > b, else 0',
-  SLT: 'Signed less-than',
-  SGT: 'Signed greater-than',
-  EQ: '1 if a == b, else 0',
-  ISZERO: '1 if a == 0, else 0',
+  // === COMPARISON ===
+  LT: {
+    stack: '[a, b] → [a<b]',
+    desc: 'Less than (unsigned)',
+    effect: 'Returns 1 if true, 0 if false',
+  },
+  GT: {
+    stack: '[a, b] → [a>b]',
+    desc: 'Greater than (unsigned)',
+    effect: 'Returns 1 if true, 0 if false',
+  },
+  SLT: {
+    stack: '[a, b] → [a<b]',
+    desc: 'Less than (signed)',
+    effect: 'Treats values as two\'s complement',
+  },
+  SGT: {
+    stack: '[a, b] → [a>b]',
+    desc: 'Greater than (signed)',
+    effect: 'Treats values as two\'s complement',
+  },
+  EQ: {
+    stack: '[a, b] → [a==b]',
+    desc: 'Equality check',
+    effect: 'Returns 1 if equal, 0 otherwise',
+  },
+  ISZERO: {
+    stack: '[a] → [a==0]',
+    desc: 'Check if zero',
+    effect: 'Returns 1 if zero, 0 otherwise',
+  },
 
-  // Bitwise
-  AND: 'Bitwise AND',
-  OR: 'Bitwise OR',
-  XOR: 'Bitwise XOR',
-  NOT: 'Bitwise NOT (flip all bits)',
-  BYTE: 'Get byte at position from value',
-  SHL: 'Shift left',
-  SHR: 'Shift right (logical)',
-  SAR: 'Shift right (arithmetic/signed)',
+  // === BITWISE ===
+  AND: {
+    stack: '[a, b] → [a&b]',
+    desc: 'Bitwise AND',
+    effect: 'Each bit: 1 only if both are 1',
+  },
+  OR: {
+    stack: '[a, b] → [a|b]',
+    desc: 'Bitwise OR',
+    effect: 'Each bit: 1 if either is 1',
+  },
+  XOR: {
+    stack: '[a, b] → [a^b]',
+    desc: 'Bitwise XOR',
+    effect: 'Each bit: 1 if bits differ',
+  },
+  NOT: {
+    stack: '[a] → [~a]',
+    desc: 'Bitwise NOT',
+    effect: 'Flips all 256 bits',
+  },
+  BYTE: {
+    stack: '[i, x] → [byte]',
+    desc: 'Get byte i of x (0=MSB)',
+    effect: 'Returns 0 if i >= 32',
+  },
+  SHL: {
+    stack: '[shift, value] → [value<<shift]',
+    desc: 'Shift left',
+    effect: 'Zeros fill from right',
+  },
+  SHR: {
+    stack: '[shift, value] → [value>>shift]',
+    desc: 'Logical shift right',
+    effect: 'Zeros fill from left',
+  },
+  SAR: {
+    stack: '[shift, value] → [value>>shift]',
+    desc: 'Arithmetic shift right',
+    effect: 'Sign bit fills from left',
+  },
 
-  // Keccak
-  KECCAK256: 'Keccak-256 hash of memory region',
+  // === KECCAK ===
+  KECCAK256: {
+    stack: '[offset, size] → [hash]',
+    desc: 'Keccak-256 hash of memory',
+    effect: 'Reads memory[offset:offset+size]',
+  },
 
-  // Environment
-  ADDRESS: 'Push current contract address',
-  BALANCE: 'Get balance of address',
-  ORIGIN: 'Push tx.origin (original sender)',
-  CALLER: 'Push msg.sender (immediate caller)',
-  CALLVALUE: 'Push msg.value (wei sent)',
-  CALLDATALOAD: 'Load 32 bytes from calldata',
-  CALLDATASIZE: 'Push calldata size in bytes',
-  CALLDATACOPY: 'Copy calldata to memory',
-  CODESIZE: 'Push size of current code',
-  CODECOPY: 'Copy code to memory',
-  GASPRICE: 'Push tx.gasprice',
-  EXTCODESIZE: 'Get code size of address',
-  EXTCODECOPY: 'Copy external code to memory',
-  RETURNDATASIZE: 'Size of last return data',
-  RETURNDATACOPY: 'Copy return data to memory',
-  EXTCODEHASH: 'Get code hash of address',
+  // === ENVIRONMENT ===
+  ADDRESS: {
+    stack: '[] → [address]',
+    desc: 'Current contract address',
+    effect: 'The address of executing code',
+  },
+  BALANCE: {
+    stack: '[address] → [balance]',
+    desc: 'Get ETH balance of address',
+    effect: 'Balance in wei (10⁻¹⁸ ETH)',
+  },
+  ORIGIN: {
+    stack: '[] → [address]',
+    desc: 'Transaction origin (tx.origin)',
+    effect: 'Original external account, never a contract',
+  },
+  CALLER: {
+    stack: '[] → [address]',
+    desc: 'Immediate caller (msg.sender)',
+    effect: 'Can be contract or EOA',
+  },
+  CALLVALUE: {
+    stack: '[] → [value]',
+    desc: 'ETH sent with call (msg.value)',
+    effect: 'Value in wei',
+  },
+  CALLDATALOAD: {
+    stack: '[offset] → [data]',
+    desc: 'Load 32 bytes from calldata',
+    effect: 'Pads with zeros if beyond end',
+  },
+  CALLDATASIZE: {
+    stack: '[] → [size]',
+    desc: 'Size of calldata in bytes',
+    effect: 'Total input data length',
+  },
+  CALLDATACOPY: {
+    stack: '[destOffset, offset, size] → []',
+    desc: 'Copy calldata to memory',
+    effect: 'memory[destOffset:+size] = calldata[offset:+size]',
+  },
+  CODESIZE: {
+    stack: '[] → [size]',
+    desc: 'Size of current code',
+    effect: 'Bytecode length in bytes',
+  },
+  CODECOPY: {
+    stack: '[destOffset, offset, size] → []',
+    desc: 'Copy code to memory',
+    effect: 'memory[destOffset:+size] = code[offset:+size]',
+  },
+  GASPRICE: {
+    stack: '[] → [price]',
+    desc: 'Gas price of transaction',
+    effect: 'In wei per gas unit',
+  },
+  EXTCODESIZE: {
+    stack: '[address] → [size]',
+    desc: 'Code size of external account',
+    effect: 'Returns 0 for EOAs',
+  },
+  EXTCODECOPY: {
+    stack: '[address, destOffset, offset, size] → []',
+    desc: 'Copy external code to memory',
+    effect: 'Like CODECOPY but for other address',
+  },
+  RETURNDATASIZE: {
+    stack: '[] → [size]',
+    desc: 'Size of last call\'s return data',
+    effect: 'Set after CALL/DELEGATECALL/etc',
+  },
+  RETURNDATACOPY: {
+    stack: '[destOffset, offset, size] → []',
+    desc: 'Copy return data to memory',
+    effect: 'Reverts if offset+size > RETURNDATASIZE',
+  },
+  EXTCODEHASH: {
+    stack: '[address] → [hash]',
+    desc: 'Keccak256 of account code',
+    effect: 'Returns 0 for non-existent accounts',
+  },
 
-  // Block info
-  BLOCKHASH: 'Get hash of recent block',
-  COINBASE: 'Push block.coinbase (miner)',
-  TIMESTAMP: 'Push block.timestamp',
-  NUMBER: 'Push block.number',
-  DIFFICULTY: 'Push block.difficulty',
-  GASLIMIT: 'Push block.gaslimit',
-  CHAINID: 'Push chain ID (EIP-155)',
-  SELFBALANCE: 'Push balance of current contract',
-  BASEFEE: 'Push block.basefee (EIP-1559)',
+  // === BLOCK INFO ===
+  BLOCKHASH: {
+    stack: '[blockNum] → [hash]',
+    desc: 'Hash of block (last 256 only)',
+    effect: 'Returns 0 if block too old/future',
+  },
+  COINBASE: {
+    stack: '[] → [address]',
+    desc: 'Block miner/validator address',
+    effect: 'Receives block rewards',
+  },
+  TIMESTAMP: {
+    stack: '[] → [timestamp]',
+    desc: 'Block timestamp (Unix seconds)',
+    effect: 'Can be manipulated by miners slightly',
+  },
+  NUMBER: {
+    stack: '[] → [blockNum]',
+    desc: 'Current block number',
+    effect: 'Increments each block',
+  },
+  DIFFICULTY: {
+    stack: '[] → [difficulty]',
+    desc: 'Block difficulty (PoW) / prevrandao (PoS)',
+    effect: 'After merge: random beacon value',
+  },
+  GASLIMIT: {
+    stack: '[] → [limit]',
+    desc: 'Block gas limit',
+    effect: 'Max gas usable in block',
+  },
+  CHAINID: {
+    stack: '[] → [chainId]',
+    desc: 'Chain ID (EIP-155)',
+    effect: '1=mainnet, 5=goerli, etc.',
+  },
+  SELFBALANCE: {
+    stack: '[] → [balance]',
+    desc: 'Balance of current contract',
+    effect: 'Cheaper than BALANCE(ADDRESS)',
+  },
+  BASEFEE: {
+    stack: '[] → [baseFee]',
+    desc: 'Block base fee (EIP-1559)',
+    effect: 'Minimum gas price for block',
+  },
 
-  // Stack/Memory/Storage
-  POP: 'Remove top stack item',
-  MLOAD: 'Load 32 bytes from memory',
-  MSTORE: 'Store 32 bytes to memory',
-  MSTORE8: 'Store 1 byte to memory',
-  SLOAD: 'Load from storage slot',
-  SSTORE: 'Store to storage slot',
-  MSIZE: 'Push current memory size',
-  GAS: 'Push remaining gas',
+  // === STACK/MEMORY/STORAGE ===
+  POP: {
+    stack: '[a] → []',
+    desc: 'Remove top stack item',
+    effect: 'Discards value',
+  },
+  MLOAD: {
+    stack: '[offset] → [value]',
+    desc: 'Load 32 bytes from memory',
+    effect: 'Reads memory[offset:offset+32]',
+  },
+  MSTORE: {
+    stack: '[offset, value] → []',
+    desc: 'Store 32 bytes to memory',
+    effect: 'memory[offset:offset+32] = value',
+  },
+  MSTORE8: {
+    stack: '[offset, value] → []',
+    desc: 'Store 1 byte to memory',
+    effect: 'memory[offset] = value & 0xff',
+  },
+  SLOAD: {
+    stack: '[slot] → [value]',
+    desc: 'Load from storage slot',
+    effect: 'Reads persistent contract storage',
+  },
+  SSTORE: {
+    stack: '[slot, value] → []',
+    desc: 'Store to storage slot',
+    effect: 'Writes persistent storage (expensive!)',
+  },
+  MSIZE: {
+    stack: '[] → [size]',
+    desc: 'Current memory size',
+    effect: 'Always multiple of 32',
+  },
+  GAS: {
+    stack: '[] → [gas]',
+    desc: 'Remaining gas',
+    effect: 'Gas left after this opcode',
+  },
 
-  // Control flow
-  JUMP: 'Unconditional jump to destination',
-  JUMPI: 'Jump if condition is non-zero',
-  PC: 'Push program counter',
-  JUMPDEST: 'Valid jump destination marker',
+  // === CONTROL FLOW ===
+  JUMP: {
+    stack: '[dest] → []',
+    desc: 'Unconditional jump',
+    effect: 'dest must be JUMPDEST',
+  },
+  JUMPI: {
+    stack: '[dest, cond] → []',
+    desc: 'Jump if condition non-zero',
+    effect: 'If cond≠0, jump to dest (must be JUMPDEST)',
+  },
+  PC: {
+    stack: '[] → [pc]',
+    desc: 'Program counter before this op',
+    effect: 'Current instruction offset',
+  },
+  JUMPDEST: {
+    stack: '[] → []',
+    desc: 'Valid jump destination',
+    effect: 'Marks location as valid jump target',
+  },
 
-  // Logging
-  LOG0: 'Emit log with 0 topics',
-  LOG1: 'Emit log with 1 topic',
-  LOG2: 'Emit log with 2 topics',
-  LOG3: 'Emit log with 3 topics',
-  LOG4: 'Emit log with 4 topics',
+  // === LOGGING ===
+  LOG0: {
+    stack: '[offset, size] → []',
+    desc: 'Emit log with 0 topics',
+    effect: 'Emits memory[offset:+size] as event data',
+  },
+  LOG1: {
+    stack: '[offset, size, topic0] → []',
+    desc: 'Emit log with 1 topic',
+    effect: 'topic0 is indexed (searchable)',
+  },
+  LOG2: {
+    stack: '[offset, size, topic0, topic1] → []',
+    desc: 'Emit log with 2 topics',
+    effect: 'Topics are indexed (searchable)',
+  },
+  LOG3: {
+    stack: '[offset, size, t0, t1, t2] → []',
+    desc: 'Emit log with 3 topics',
+    effect: 'Topics are indexed (searchable)',
+  },
+  LOG4: {
+    stack: '[offset, size, t0, t1, t2, t3] → []',
+    desc: 'Emit log with 4 topics',
+    effect: 'Max 4 topics per event',
+  },
+
+  // === SYSTEM ===
+  RETURN: {
+    stack: '[offset, size] → []',
+    desc: 'Return data and halt',
+    effect: 'Returns memory[offset:+size] to caller',
+  },
+  REVERT: {
+    stack: '[offset, size] → []',
+    desc: 'Revert with return data',
+    effect: 'Undoes all state changes, returns data',
+  },
+  INVALID: {
+    stack: '[] → []',
+    desc: 'Invalid opcode',
+    effect: 'Always reverts, consumes all gas',
+  },
+  SELFDESTRUCT: {
+    stack: '[recipient] → []',
+    desc: 'Destroy contract, send ETH',
+    effect: 'Deprecated after Cancun (EIP-6780)',
+  },
+
+  // === CALL OPERATIONS ===
+  CALL: {
+    stack: '[gas, addr, value, argsOff, argsLen, retOff, retLen] → [success]',
+    desc: 'Call another contract',
+    effect: 'Sends ETH + calldata, gets return data',
+  },
+  CALLCODE: {
+    stack: '[gas, addr, value, argsOff, argsLen, retOff, retLen] → [success]',
+    desc: 'Call with current storage (deprecated)',
+    effect: 'Like DELEGATECALL but with value',
+  },
+  DELEGATECALL: {
+    stack: '[gas, addr, argsOff, argsLen, retOff, retLen] → [success]',
+    desc: 'Call preserving msg.sender & storage',
+    effect: 'Runs code in current context (proxies)',
+  },
+  STATICCALL: {
+    stack: '[gas, addr, argsOff, argsLen, retOff, retLen] → [success]',
+    desc: 'Read-only call (no state changes)',
+    effect: 'Reverts if callee tries to write',
+  },
+  CREATE: {
+    stack: '[value, offset, size] → [address]',
+    desc: 'Create new contract',
+    effect: 'Deploys memory[offset:+size] as code',
+  },
+  CREATE2: {
+    stack: '[value, offset, size, salt] → [address]',
+    desc: 'Create with deterministic address',
+    effect: 'Address = hash(0xff, sender, salt, initCodeHash)',
+  },
 }
 
 /**
- * Get description for an opcode
+ * Get detailed description for an opcode
  */
 export function getOpcodeDescription(name: string): string {
   // Handle PUSH variants
   if (name.startsWith('PUSH')) {
     const bytes = name.replace('PUSH', '')
-    return `Push ${bytes}-byte value onto stack`
+    return `[] → [value]\nPush ${bytes}-byte immediate value onto stack\nValue follows opcode in bytecode`
   }
 
   // Handle DUP variants
   if (name.startsWith('DUP')) {
-    const n = name.replace('DUP', '')
-    return `Duplicate ${n}${getOrdinalSuffix(parseInt(n))} stack item`
+    const n = parseInt(name.replace('DUP', ''))
+    const items = Array.from({ length: n }, (_, i) => `v${n - i}`).join(', ')
+    return `[${items}] → [${items}, v${n}]\nDuplicate ${n}${getOrdinalSuffix(n)} stack item\nCopies without removing original`
   }
 
   // Handle SWAP variants
   if (name.startsWith('SWAP')) {
-    const n = name.replace('SWAP', '')
-    return `Swap top with ${n}${getOrdinalSuffix(parseInt(n) + 1)} stack item`
+    const n = parseInt(name.replace('SWAP', ''))
+    return `[v0, ..., v${n}] → [v${n}, ..., v0]\nSwap top with ${n + 1}${getOrdinalSuffix(n + 1)} stack item\nExchanges positions`
   }
 
-  return OPCODE_DESCRIPTIONS[name] || 'EVM opcode'
+  const info = OPCODE_INFO[name]
+  if (info) {
+    let result = `${info.stack}\n${info.desc}`
+    if (info.effect) {
+      result += `\n${info.effect}`
+    }
+    return result
+  }
+
+  return 'EVM opcode'
 }
 
 function getOrdinalSuffix(n: number): string {
