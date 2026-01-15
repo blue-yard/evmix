@@ -31,10 +31,19 @@ export function GasMeter() {
       {/* Numbers */}
       <div className="flex gap-3 text-xs font-mono">
         <span className="text-evmix-muted">
-          Used: <span className="text-evmix-error">{formatGas(usedGas)}</span>
+          Used:{' '}
+          <span className="text-evmix-error" title={`${usedGas} gas`}>
+            {usedGas.toLocaleString()}
+          </span>
         </span>
         <span className="text-evmix-muted">
-          Left: <span className="text-evmix-success">{formatGas(currentGas)}</span>
+          Left:{' '}
+          <span className="text-evmix-success" title={`${currentGas} gas`}>
+            {formatGas(currentGas)}
+          </span>
+          <span className="text-evmix-muted/60 ml-1">
+            ({percentRemaining}%)
+          </span>
         </span>
       </div>
     </div>
