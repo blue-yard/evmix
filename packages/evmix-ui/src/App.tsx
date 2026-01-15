@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { BytecodeInput } from './components/BytecodeInput'
 import { Timeline } from './components/Timeline'
 import { StackPanel, MemoryPanel, StoragePanel } from './components/panels'
@@ -8,9 +8,64 @@ import { useDebugStore } from './store/debugStore'
 
 type ActivePanel = 'stack' | 'memory' | 'storage'
 
+/**
+ * Detect which areas changed at the current step
+ */
+function useChangeIndicators() {
+  const events = useDebugStore((s) => s.events)
+  const currentStep = useDebugStore((s) => s.currentStep)
+  const session = useDebugStore((s) => s.session)
+
+  return useMemo(() => {
+    if (!session || currentStep === 0) {
+      return { stackChanged: false, memoryChanged: false, storageChanged: false }
+    }
+
+    // Get events for the current step only (not cumulative)
+    const allEvents = session.getEvents()
+
+    // Find events that happened at this step
+    // Events are indexed, we need to find those between step-1 and step
+    let opcodeCount = 0
+    let stackChanged = false
+    let memoryChanged = false
+    let storageChanged = false
+
+    for (const event of allEvents) {
+      if (event.type === 'opcode.start') {
+        opcodeCount++
+        // Reset flags for each new opcode
+        if (opcodeCount === currentStep) {
+          // This is our current step, check subsequent events until next opcode
+          stackChanged = false
+          memoryChanged = false
+          storageChanged = false
+        }
+        if (opcodeCount > currentStep) break
+      }
+
+      // Only count events for the current step
+      if (opcodeCount === currentStep) {
+        if (event.type === 'stack.push' || event.type === 'stack.pop') {
+          stackChanged = true
+        }
+        if (event.type === 'memory.write') {
+          memoryChanged = true
+        }
+        if (event.type === 'storage.write' || event.type === 'storage.read') {
+          storageChanged = true
+        }
+      }
+    }
+
+    return { stackChanged, memoryChanged, storageChanged }
+  }, [session, events, currentStep])
+}
+
 export default function App() {
   const session = useDebugStore((s) => s.session)
   const [activePanel, setActivePanel] = useState<ActivePanel>('stack')
+  const { stackChanged, memoryChanged, storageChanged } = useChangeIndicators()
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -39,18 +94,24 @@ export default function App() {
                 <PanelTab
                   active={activePanel === 'stack'}
                   onClick={() => setActivePanel('stack')}
+                  changed={stackChanged}
+                  changeColor="text-green-400"
                 >
                   Stack
                 </PanelTab>
                 <PanelTab
                   active={activePanel === 'memory'}
                   onClick={() => setActivePanel('memory')}
+                  changed={memoryChanged}
+                  changeColor="text-yellow-400"
                 >
                   Memory
                 </PanelTab>
                 <PanelTab
                   active={activePanel === 'storage'}
                   onClick={() => setActivePanel('storage')}
+                  changed={storageChanged}
+                  changeColor="text-orange-400"
                 >
                   Storage
                 </PanelTab>
@@ -101,19 +162,35 @@ interface PanelTabProps {
   active: boolean
   onClick: () => void
   children: React.ReactNode
+  changed?: boolean
+  changeColor?: string
 }
 
-function PanelTab({ active, onClick, children }: PanelTabProps) {
+function PanelTab({ active, onClick, children, changed, changeColor = 'text-evmix-accent' }: PanelTabProps) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+      className={`relative flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
         active
           ? 'bg-evmix-accent text-black'
           : 'text-evmix-muted hover:text-evmix-text hover:bg-evmix-border/50'
       }`}
     >
       {children}
+      {/* Change indicator - show when not active and there's a change */}
+      {changed && !active && (
+        <span
+          className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${changeColor} bg-current animate-pulse`}
+          title="Changed at this step"
+        />
+      )}
+      {/* Subtle indicator when active */}
+      {changed && active && (
+        <span
+          className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-black/50"
+          title="Changed at this step"
+        />
+      )}
     </button>
   )
 }
