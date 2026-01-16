@@ -6,3 +6,10 @@ export {
   evaluateBreakpoint,
 } from './Breakpoint'
 export { SnapshotManager } from './SnapshotManager'
+export {
+  DebugSession,
+  DebugSessionConfig,
+  StepResult,
+  DebugEventType,
+  DebugEventPayload,
+} from './DebugSession'
