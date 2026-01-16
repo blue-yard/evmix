@@ -64,4 +64,67 @@ describe('DebugSession', () => {
       expect(snapshot.stack[0].value).toBe(5n)
     })
   })
+
+  describe('breakpoints', () => {
+    it('stops on PC breakpoint', () => {
+      // PUSH1 5, PUSH1 3, ADD, STOP (ADD is at PC=4)
+      const bytecode = new Uint8Array([0x60, 0x05, 0x60, 0x03, 0x01, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+      })
+
+      session.addBreakpoint({ type: 'pc', value: 4 })
+      session.run()
+
+      // Breakpoint triggers after executing opcode at PC=4 (ADD)
+      expect(session.getCurrentStep()).toBe(3) // Stopped after ADD
+      expect(session.isHalted()).toBe(false)
+    })
+
+    it('stops on opcode breakpoint', () => {
+      // PUSH1 5, PUSH1 3, ADD, STOP
+      const bytecode = new Uint8Array([0x60, 0x05, 0x60, 0x03, 0x01, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+      })
+
+      session.addBreakpoint({ type: 'opcode', opcode: 0x01 }) // ADD
+      session.run()
+
+      // Should stop after ADD executes
+      expect(session.getSnapshot().stack.length).toBe(1) // Result of ADD
+    })
+
+    it('custom predicate breakpoint works', () => {
+      const bytecode = new Uint8Array([0x60, 0x05, 0x60, 0x03, 0x01, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+      })
+
+      session.addBreakpoint({
+        type: 'custom',
+        fn: (ctx) => ctx.stack.length >= 2,
+      })
+      session.run()
+
+      expect(session.getCurrentStep()).toBe(2) // After second PUSH
+    })
+
+    it('disabled breakpoints are skipped', () => {
+      const bytecode = new Uint8Array([0x60, 0x05, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+      })
+
+      const id = session.addBreakpoint({ type: 'pc', value: 0 })
+      session.removeBreakpoint(id)
+      session.run()
+
+      expect(session.isHalted()).toBe(true) // Ran to completion
+    })
+  })
 })
