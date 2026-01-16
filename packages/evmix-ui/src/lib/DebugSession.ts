@@ -8,7 +8,18 @@ import {
 import type { ExecutionSnapshot, DebugSessionConfig, TraceSource } from './types'
 
 /**
- * DebugSession - Manages EVM execution with time-travel support
+ * DebugSession - Manages EVM execution with time-travel support for the UI
+ *
+ * NOTE: This is a UI-specific DebugSession optimized for the "run to completion
+ * then time-travel" pattern used by the visual debugger. It differs from
+ * @evmix/core's DebugSession which is designed for interactive step-by-step
+ * debugging with breakpoints.
+ *
+ * Key differences from core DebugSession:
+ * - Runs execution to completion upfront (runToCompletion)
+ * - Stores snapshots at every step for instant time-travel
+ * - Uses string[] for stack (hex) vs Word256[] in core
+ * - Has getEventsUpTo() for partial trace viewing
  *
  * Provides:
  * - Step-by-step execution
