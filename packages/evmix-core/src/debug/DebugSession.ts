@@ -1,5 +1,5 @@
 // packages/evmix-core/src/debug/DebugSession.ts
-import { Interpreter, InterpreterConfig } from '../interpreter/Interpreter'
+import { Interpreter } from '../interpreter/Interpreter'
 import { MemoryHost } from '../host/MemoryHost'
 import { getOpcodeName } from '../opcodes/Opcode'
 import { HaltReason } from '../state/HaltReason'
