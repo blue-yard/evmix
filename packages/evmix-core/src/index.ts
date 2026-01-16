@@ -39,3 +39,20 @@ export type { InterpreterConfig } from './interpreter/Interpreter'
 export type { Host, LogEntry, TxContext, MsgContext, BlockContext, Account } from './host/Host'
 export { MemoryHost } from './host/MemoryHost'
 export type { MemoryHostConfig } from './host/MemoryHost'
+
+// Debug module
+export {
+  DebugSession,
+  DebugSessionConfig,
+  StepResult,
+  DebugEventType,
+  DebugEventPayload,
+  Snapshot,
+  SnapshotDelta,
+  createSnapshot,
+  Breakpoint,
+  BreakpointCondition,
+  BreakpointContext,
+  evaluateBreakpoint,
+  SnapshotManager,
+} from './debug'
