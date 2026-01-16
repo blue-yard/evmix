@@ -5,3 +5,4 @@ export {
   BreakpointContext,
   evaluateBreakpoint,
 } from './Breakpoint'
+export { SnapshotManager } from './SnapshotManager'
