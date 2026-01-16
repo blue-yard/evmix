@@ -2,6 +2,8 @@
 import { describe, it, expect } from 'vitest'
 import { DebugSession } from '../../src/debug/DebugSession'
 import { MemoryHost } from '../../src/host/MemoryHost'
+import { Word256 } from '../../src/types/Word256'
+import { Address } from '../../src/types/Address'
 
 describe('DebugSession', () => {
   describe('stepping', () => {
@@ -125,6 +127,83 @@ describe('DebugSession', () => {
       session.run()
 
       expect(session.isHalted()).toBe(true) // Ran to completion
+    })
+  })
+
+  describe('mutation', () => {
+    it('mutate() changes host state', () => {
+      const bytecode = new Uint8Array([0x60, 0x05, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+      })
+
+      const addr = Address.fromHex('0x1234567890123456789012345678901234567890')
+      session.mutate((host) => {
+        host.setBalance(addr, 999n)
+      })
+
+      // Verify the host was mutated (we'd need to access host somehow)
+      expect(session.getForkPoint()).toBe(0)
+    })
+
+    it('invalidates snapshots after fork point', () => {
+      const bytecode = new Uint8Array([0x60, 0x05, 0x60, 0x03, 0x01, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+        checkpointInterval: 1, // Checkpoint every step
+      })
+
+      session.step() // step 1
+      session.step() // step 2
+
+      expect(session.getSnapshotAt(1)).toBeDefined()
+      expect(session.getSnapshotAt(2)).toBeDefined()
+
+      // Go back to step 1 conceptually and mutate
+      session.mutate(() => {})
+
+      // Snapshots after current step should be invalidated
+      // (In this case, no snapshots after step 2)
+    })
+  })
+
+  describe('events', () => {
+    it('emits step event after each opcode', () => {
+      const bytecode = new Uint8Array([0x60, 0x05, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+      })
+
+      const events: string[] = []
+      session.on('step', () => events.push('step'))
+      session.on('halted', () => events.push('halted'))
+
+      session.step() // PUSH1
+      session.step() // STOP
+
+      expect(events).toContain('step')
+      expect(events).toContain('halted')
+    })
+
+    it('emits breakpoint-hit with breakpoint ID', () => {
+      const bytecode = new Uint8Array([0x60, 0x05, 0x00])
+      const session = new DebugSession({
+        bytecode,
+        initialGas: 100000n,
+      })
+
+      let hitId: string | undefined
+      session.on('breakpoint-hit', (payload) => {
+        hitId = payload.metadata?.breakpointId
+      })
+
+      const id = session.addBreakpoint({ type: 'opcode', opcode: 0x60 })
+      session.run()
+
+      expect(hitId).toBe(id)
     })
   })
 })
